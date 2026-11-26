@@ -3,6 +3,10 @@ declare(strict_types=1);
 
 /* 모든 서버 파일이 맨 처음 불러오는 공통 준비 코드 */
 
+/* PHP 경고 문구가 JSON 응답에 섞이지 않게: 화면에는 안 보이고 서버 기록(error_log)에만 남겨요 */
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 /* PHP 7.4 에서도 돌아가게 하는 보조 함수 (PHP 8 에는 원래 있음) */
 if (!function_exists('str_starts_with')) {
     function str_starts_with(string $h, string $n): bool { return $n === '' || strncmp($h, $n, strlen($n)) === 0; }

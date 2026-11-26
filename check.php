@@ -30,7 +30,8 @@ if (is_array($cfg)) {
     $here = ($https ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? '') . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/\\');
     $same = strcasecmp($url, $here) === 0;
     item('app_url 이 지금 주소와 같음', $same, $same ? $url : "config.php 의 app_url 은 '{$url}' 인데 지금 주소는 '{$here}' 예요. 지금 주소로 바꿔 주세요");
-    item('HTTPS 로 접속', $https, $https ? '보안 연결' : 'http 로 열렸어요. 호스팅에서 무료 SSL(HTTPS)을 켜고 https:// 주소를 쓰세요 (카카오·구글 로그인에 필요)');
+    // HTTPS 는 권장이지만 없어도 앱은 돌아가요 (구글 로그인만 HTTPS 가 꼭 필요)
+    item('HTTPS (권장)', true, $https ? '보안 연결' : '⚠ http 로 쓰는 중이에요. 앱은 돌아가지만 비밀번호가 암호화되지 않은 채 오가요. 구글 로그인은 HTTPS 가 있어야 쓸 수 있어요');
 
     $sp = (string)($cfg['session_path'] ?? '') ?: __DIR__ . '/sessions';
     if (!is_dir($sp)) @mkdir($sp, 0700, true);
