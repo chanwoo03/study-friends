@@ -1,0 +1,124 @@
+<?php
+declare(strict_types=1);
+/* 가입, 로그인, 내 정보 */
+
+function me_payload(int $id): array {
+    $u = row('SELECT * FROM users WHERE id = ?', [$id]);
+    $linked = array_column(rows('SELECT provider FROM oauth_accounts WHERE user_id = ?', [$id]), 'provider');
+    return public_user($u) + [
+        'username'    => $u['username'],
+        'hasPassword' => $u['password_hash'] !== null,
+        'inviteCode'  => $u['invite_code'],
+        'linked'      => $linked,
+    ];
+}
+
+route('config', 'GET', function (?int $me) {
+    return [
+        'csrf'          => csrf_token(),
+        'providers'     => providers_enabled(),
+        'allowRegister' => (bool)cfg('allow_register', true),
+        'me'            => $me && val('SELECT id FROM users WHERE id = ?', [$me]) ? me_payload($me) : null,
+        'today'         => date('Y-m-d'),
+    ];
+}, true);
+
+function check_rate_limit(string $username): void {
+    $ip = client_ip();
+    q('DELETE FROM login_attempts WHERE created_at < NOW() - INTERVAL 1 DAY');
+    $byIp   = (int)val('SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND created_at > NOW() - INTERVAL 15 MINUTE', [$ip]);
+    $byUser = (int)val('SELECT COUNT(*) FROM login_attempts WHERE username = ? AND created_at > NOW() - INTERVAL 15 MINUTE', [$username]);
+    if ($byIp >= 30 || $byUser >= 8) fail(429, '시도가 너무 많아요. 15분 뒤에 다시 해 주세요');
+}
+function username_arg(): string {
+    $u = strtolower(str_arg('username', 20, true, '아이디'));
+    if (!preg_match('/^[a-z0-9_]{4,20}$/', $u)) fail(400, '아이디는 영문 소문자·숫자·_ 로 4~20자예요');
+    return $u;
+}
+function password_arg(string $k = 'password'): string {
+    $p = arg($k, '');
+    if (!is_string($p) || strlen($p) < 8) fail(400, '비밀번호는 8자 이상이어야 해요');
+    if (strlen($p) > 200) fail(400, '비밀번호가 너무 길어요');
+    return $p;
+}
+
+route('auth.register', 'POST', function (?int $me) {
+    if (!cfg('allow_register', true)) fail(403, '지금은 새로 가입할 수 없어요');
+    $username = username_arg();
+    $password = password_arg();
+    $name = str_arg('name', 20, true, '이름');
+    check_rate_limit($username);
+    q('INSERT INTO login_attempts (ip, username) VALUES (?, ?)', [client_ip(), '#register']);
+    if ((int)val("SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND username = '#register' AND created_at > NOW() - INTERVAL 1 HOUR", [client_ip()]) > 10) {
+        fail(429, '가입 시도가 너무 많아요. 잠시 후 다시 해 주세요');
+    }
+    if (val('SELECT id FROM users WHERE username = ?', [$username])) fail(409, '이미 쓰고 있는 아이디예요');
+    $id = create_user($name, $username, password_hash($password, PASSWORD_DEFAULT));
+    login_as($id);
+    return ['me' => me_payload($id), 'csrf' => csrf_token()];
+}, true);
+
+route('auth.login', 'POST', function (?int $me) {
+    $username = strtolower(str_arg('username', 20, true, '아이디'));
+    $password = (string)arg('password', '');
+    check_rate_limit($username);
+    $u = row('SELECT id, password_hash FROM users WHERE username = ?', [$username]);
+    if (!$u || !$u['password_hash'] || !password_verify($password, $u['password_hash'])) {
+        q('INSERT INTO login_attempts (ip, username) VALUES (?, ?)', [client_ip(), $username]);
+        fail(401, '아이디나 비밀번호가 맞지 않아요');
+    }
+    if (password_needs_rehash($u['password_hash'], PASSWORD_DEFAULT)) {
+        q('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), $u['id']]);
+    }
+    q('DELETE FROM login_attempts WHERE username = ?', [$username]);
+    login_as((int)$u['id']);
+    return ['me' => me_payload((int)$u['id']), 'csrf' => csrf_token()];
+}, true);
+
+route('auth.logout', 'POST', function (?int $me) {
+    $_SESSION = [];
+    session_regenerate_id(true);
+    return ['csrf' => csrf_token()];
+}, true);
+
+route('me.get', 'GET', fn(int $me) => ['me' => me_payload($me)]);
+
+route('me.update', 'POST', function (int $me) {
+    $name = str_arg('name', 20, true, '이름');
+    $color = color_arg('color', (string)val('SELECT color FROM users WHERE id = ?', [$me]));
+    q('UPDATE users SET display_name = ?, color = ? WHERE id = ?', [$name, $color, $me]);
+    return ['me' => me_payload($me)];
+});
+
+/* 비밀번호 바꾸기. 소셜로만 가입한 사람은 여기서 아이디·비밀번호를 새로 만들 수 있어요 */
+route('me.password', 'POST', function (int $me) {
+    $u = row('SELECT username, password_hash FROM users WHERE id = ?', [$me]);
+    if ($u['password_hash']) {
+        if (!password_verify((string)arg('current', ''), $u['password_hash'])) fail(400, '지금 비밀번호가 맞지 않아요');
+    }
+    $new = password_arg('password');
+    if (!$u['username']) {
+        $username = username_arg();
+        if (val('SELECT id FROM users WHERE username = ?', [$username])) fail(409, '이미 쓰고 있는 아이디예요');
+        q('UPDATE users SET username = ? WHERE id = ?', [$username, $me]);
+    }
+    q('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), $me]);
+    return ['me' => me_payload($me)];
+});
+
+route('me.unlink', 'POST', function (int $me) {
+    $p = (string)arg('provider', '');
+    $u = row('SELECT password_hash FROM users WHERE id = ?', [$me]);
+    $count = (int)val('SELECT COUNT(*) FROM oauth_accounts WHERE user_id = ?', [$me]);
+    if (!$u['password_hash'] && $count <= 1) fail(400, '로그인할 방법이 하나는 남아 있어야 해요. 먼저 아이디·비밀번호를 만들어 주세요');
+    q('DELETE FROM oauth_accounts WHERE user_id = ? AND provider = ?', [$me, $p]);
+    return ['me' => me_payload($me)];
+});
+
+route('me.delete', 'POST', function (int $me) {
+    if ((string)arg('confirm', '') !== '탈퇴') fail(400, '확인 칸에 ‘탈퇴’라고 적어 주세요');
+    q('DELETE FROM users WHERE id = ?', [$me]);
+    $_SESSION = [];
+    session_regenerate_id(true);
+    return ['csrf' => csrf_token()];
+});

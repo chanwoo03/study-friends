@@ -1,0 +1,8 @@
+# DB 비밀번호·카카오/구글 키가 들어가는 설정 파일은 올리지 않아요
+config.php
+# 로그인 상태 파일
+sessions/*
+!sessions/.htaccess
+# 기타
+.DS_Store
+Thumbs.db
