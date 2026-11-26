@@ -11,7 +11,7 @@ function require_friend(int $me, int $fid): void {
 }
 
 route('messages.threads', 'GET', function (int $me) {
-    $rows = rows('SELECT u.id, u.display_name, u.color, u.last_seen,
+    $rows = rows('SELECT u.id, u.display_name, u.color, u.avatar, u.last_seen,
         (SELECT MAX(m.id) FROM messages m WHERE (m.sender_id = ? AND m.receiver_id = u.id) OR (m.sender_id = u.id AND m.receiver_id = ?)) AS last_id,
         (SELECT COUNT(*) FROM messages m WHERE m.sender_id = u.id AND m.receiver_id = ? AND m.read_at IS NULL) AS unread
         FROM friendships f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ?', [$me, $me, $me, $me]);

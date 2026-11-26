@@ -15,6 +15,7 @@ const NAV = [
 const TABS = ['calendar', 'study', 'messages', 'board', 'more'];
 const VIEWS = {
   calendar: () => import('./views/calendar.js'),
+  day: () => import('./views/day.js'),
   study: () => import('./views/study.js'),
   messages: () => import('./views/messages.js'),
   board: () => import('./views/board.js'),
@@ -116,6 +117,7 @@ export function paintMe() {
   shell.meChip.replaceChildren(avatar(state.me), h('span', { class: 'grow', style: { overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' } }, state.me.name), icon('gear'));
 }
 function paintNav(name) {
+  if (name === 'day') name = 'calendar';
   const k = name === 'more' ? 'more' : name;
   for (const a of shell.side.querySelectorAll('.nav-a')) a.classList.toggle('on', a.dataset.k === k);
   const inMore = ['draw', 'notes', 'friends', 'settings', 'more'].includes(name);

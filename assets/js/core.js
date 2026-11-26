@@ -94,6 +94,20 @@ const P = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   refresh: '<path d="M20 11a8 8 0 0 0-14.9-3.5M4 4v4h4M4 13a8 8 0 0 0 14.9 3.5M20 20v-4h-4"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.9 0 3.6-.6 5-1.4"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
+  cursor: '<path d="M5 3l14 8-6 1.6L10 19z"/>',
+  rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
+  circle: '<ellipse cx="12" cy="12" rx="8.5" ry="7"/>',
+  line: '<path d="M5 19L19 5"/>',
+  arrow: '<path d="M5 19L19 5M10 5h9v9"/>',
+  text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+  sticky: '<path d="M5 4h14v10l-6 6H5z"/><path d="M13 20v-6h6"/>',
+  grid: '<path d="M3 9h18M3 15h18M9 3v18M15 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/>',
+  mindmap: '<circle cx="12" cy="12" r="3"/><circle cx="4.5" cy="5" r="2"/><circle cx="19.5" cy="5" r="2"/><circle cx="4.5" cy="19" r="2"/><circle cx="19.5" cy="19" r="2"/><path d="M9.8 10L6 6.4M14.2 10L18 6.4M9.8 14L6 17.6M14.2 14L18 17.6"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  group: '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2.5 19a5.5 5.5 0 0 1 11 0M10.5 19a5.5 5.5 0 0 1 11 0"/>',
   share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/>',
 };
 export function icon(name, cls = '') {
@@ -174,9 +188,16 @@ export function confirmBtn(label, confirmLabel, onConfirm, cls = 'btn danger sm'
 }
 
 /* ===== 사람 ===== */
+/* 프로필 사진이 있으면 사진, 없으면 이름 첫 글자 동그라미 */
 export function avatar(u, size = '') {
   const name = (u && u.name) || '?';
-  return h('span', { class: 'av ' + size, style: { '--c': (u && u.color) || '#888' }, title: name }, Array.from(name)[0]);
+  const letter = h('span', { class: 'av ' + size, style: { '--c': (u && u.color) || '#888' }, title: name }, Array.from(name)[0]);
+  if (u && u.avatar && /^uploads\/avatars\/[A-Za-z0-9_]+\.(jpg|png|webp)$/.test(u.avatar)) {
+    const img = h('img', { class: 'av img ' + size, src: u.avatar, alt: '', title: name, loading: 'lazy' });
+    img.addEventListener('error', () => img.replaceWith(letter));
+    return img;
+  }
+  return letter;
 }
 export async function loadFriends(force = false) {
   if (!force && Date.now() - state.friendsAt < 15000) return state.friends;

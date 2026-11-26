@@ -104,6 +104,10 @@ function db(): PDO {
     }
     // PHP 와 MySQL 의 '지금' 시각을 같은 시간대로 맞춤
     $pdo->exec("SET time_zone = '" . (new DateTime())->format('P') . "'");
+    // 새 버전에 필요한 표·칸이 없으면 자동으로 추가 (한 번만)
+    require_once __DIR__ . '/migrate.php';
+    try { sf_ensure_schema($pdo, (string)cfg('session_path', '') ?: dirname(__DIR__) . '/sessions'); }
+    catch (Throwable $e) { error_log('[study-friends] migrate: ' . $e->getMessage()); }
     return $pdo;
 }
 function q(string $sql, array $params = []): PDOStatement {

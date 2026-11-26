@@ -12,6 +12,16 @@ function is_friend(int $a, int $b): bool {
 
 /* SQL 조건과 매개변수. $alias 테이블에 id, owner_id, visibility 가 있어야 해요. */
 function visible_sql(string $alias, string $kind, int $me): array {
+    if ($kind === 'plan') {
+        // 공동 계획은 만든 사람과 참여자만, 혼자 계획은 공개 범위대로
+        [$base, $p] = visible_sql_base($alias, $kind, $me);
+        $sql = "(({$alias}.kind = 'group' AND ({$alias}.owner_id = ? OR EXISTS (SELECT 1 FROM plan_members pmv WHERE pmv.plan_id = {$alias}.id AND pmv.user_id = ?)))
+          OR ({$alias}.kind <> 'group' AND {$base}))";
+        return [$sql, array_merge([$me, $me], $p)];
+    }
+    return visible_sql_base($alias, $kind, $me);
+}
+function visible_sql_base(string $alias, string $kind, int $me): array {
     $sql = "({$alias}.owner_id = ?
       OR ({$alias}.visibility = 'friends' AND EXISTS (SELECT 1 FROM friendships fv WHERE fv.user_id = ? AND fv.friend_id = {$alias}.owner_id))
       OR ({$alias}.visibility = 'selected'

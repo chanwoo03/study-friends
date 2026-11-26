@@ -6,3 +6,6 @@ sessions/*
 # 기타
 .DS_Store
 Thumbs.db
+# 사용자가 올린 프로필 사진
+uploads/avatars/*
+!uploads/avatars/.gitkeep

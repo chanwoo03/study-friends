@@ -54,13 +54,13 @@ function create_user(string $name, ?string $username = null, ?string $hash = nul
 }
 
 function public_user(array $u): array {
-    return ['id' => (int)$u['id'], 'name' => $u['display_name'], 'color' => $u['color']];
+    return ['id' => (int)$u['id'], 'name' => $u['display_name'], 'color' => $u['color'], 'avatar' => $u['avatar'] ?? null];
 }
 function users_by_ids(array $ids): array {
     $ids = array_values(array_unique(array_map('intval', array_filter($ids))));
     if (!$ids) return [];
     $out = [];
-    foreach (rows('SELECT id, display_name, color FROM users WHERE id IN (' . in_list($ids) . ')', $ids) as $u) $out[(int)$u['id']] = public_user($u);
+    foreach (rows('SELECT id, display_name, color, avatar FROM users WHERE id IN (' . in_list($ids) . ')', $ids) as $u) $out[(int)$u['id']] = public_user($u);
     return $out;
 }
 function providers_enabled(): array {

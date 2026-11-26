@@ -47,7 +47,11 @@ if (is_array($cfg)) {
         $isMaria = stripos($ver, 'mariadb') !== false;
         $okVer = $isMaria ? version_compare($ver, '10.2', '>=') : version_compare($ver, '5.6.5', '>=');
         item('DB 버전', $okVer, $okVer ? '사용 가능' : 'MySQL 5.6.5 / MariaDB 10.2 이상이 필요해요. 호스팅 고객센터에 DB 버전을 물어보세요');
-        $need = ['users','oauth_accounts','login_attempts','friendships','shares','events','plans','plan_tasks','study_sessions','messages','posts','comments','canvases','strokes','notes'];
+        $need = ['users','oauth_accounts','login_attempts','friendships','shares','events','plans','plan_tasks','plan_members','task_checks','study_sessions','messages','posts','comments','canvases','strokes','notes'];
+        require_once __DIR__ . '/lib/migrate.php';
+        // 예전 버전으로 설치한 DB 는 새 표·칸을 자동으로 추가
+        try { $up = sf_migrate($pdo); if ($up) item('새 버전 업그레이드', true, '추가함: ' . implode(', ', $up)); }
+        catch (Throwable $e3) { item('새 버전 업그레이드', false, '실패: ' . $e3->getMessage()); }
         $have = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
         $missing = array_values(array_diff($need, $have));
         /* '표 만들기' 버튼: schema.sql 을 실행해 없는 표만 만들어요 (이미 있는 표는 건드리지 않아요) */
@@ -56,6 +60,7 @@ if (is_array($cfg)) {
             $sql = preg_replace('/^\s*--.*$/m', '', $sql);
             try {
                 foreach (array_filter(array_map('trim', explode(';', $sql))) as $stmt) $pdo->exec($stmt);
+                sf_migrate($pdo);
                 header('Location: check.php?installed=1');
                 exit;
             } catch (Throwable $e2) {
@@ -65,7 +70,7 @@ if (is_array($cfg)) {
             $missing = array_values(array_diff($need, $have));
         }
         $needInstall = (bool)$missing;
-        item('표(테이블) 15개', !$missing, $missing ? (count($missing) === 15 ? '아직 없어요 → 아래 ‘표 만들기’ 버튼을 누르세요' : '없는 표: ' . implode(', ', $missing) . ' → 아래 ‘표 만들기’ 버튼을 누르세요') : (isset($_GET['installed']) ? '방금 만들었어요' : '모두 있음'));
+        item('표(테이블) ' . count($need) . '개', !$missing, $missing ? (count($missing) === count($need) ? '아직 없어요 → 아래 ‘표 만들기’ 버튼을 누르세요' : '없는 표: ' . implode(', ', $missing) . ' → 아래 ‘표 만들기’ 버튼을 누르세요') : (isset($_GET['installed']) ? '방금 만들었어요' : '모두 있음'));
     } catch (Throwable $e) {
         $m = $e->getMessage();
         $hint = str_contains($m, 'Access denied') ? 'DB 아이디나 비밀번호가 틀렸어요'

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NULL,
   display_name  VARCHAR(20)  NOT NULL,
   color         CHAR(7)      NOT NULL DEFAULT '#3182f6',
+  avatar        VARCHAR(100) NULL,
   invite_code   CHAR(8)      NOT NULL,
   created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_seen     DATETIME     NULL,
@@ -73,12 +74,17 @@ CREATE TABLE IF NOT EXISTS events (
   CONSTRAINT fk_event_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- kind: personal(혼자) / group(공동 계획, plan_members 의 사람들이 같이 씀)
 CREATE TABLE IF NOT EXISTS plans (
   id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   owner_id   INT UNSIGNED NOT NULL,
+  kind       ENUM('personal','group') NOT NULL DEFAULT 'personal',
   title      VARCHAR(100) NOT NULL,
   color      CHAR(7)      NOT NULL DEFAULT '#3182f6',
   visibility ENUM('private','friends','selected') NOT NULL DEFAULT 'friends',
+  goal_hours SMALLINT UNSIGNED NULL,
+  goal_from  DATE         NULL,
+  goal_to    DATE         NULL,
   created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_owner (owner_id),
@@ -96,6 +102,28 @@ CREATE TABLE IF NOT EXISTS plan_tasks (
   KEY idx_plan_date (plan_id, due_date),
   KEY idx_date (due_date),
   CONSTRAINT fk_task_plan FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 공동 계획에 같이 참여하는 사람 (만든 사람은 plans.owner_id)
+CREATE TABLE IF NOT EXISTS plan_members (
+  plan_id   INT UNSIGNED NOT NULL,
+  user_id   INT UNSIGNED NOT NULL,
+  joined_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (plan_id, user_id),
+  KEY idx_user (user_id),
+  CONSTRAINT fk_pm_plan FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pm_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 공동 계획의 할 일을 누가 끝냈는지 (사람마다 따로 체크)
+CREATE TABLE IF NOT EXISTS task_checks (
+  task_id INT UNSIGNED NOT NULL,
+  user_id INT UNSIGNED NOT NULL,
+  done_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (task_id, user_id),
+  KEY idx_user (user_id),
+  CONSTRAINT fk_tc_task FOREIGN KEY (task_id) REFERENCES plan_tasks(id) ON DELETE CASCADE,
+  CONSTRAINT fk_tc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS study_sessions (
