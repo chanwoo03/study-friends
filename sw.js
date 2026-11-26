@@ -1,6 +1,6 @@
 // 앱 화면 파일을 저장해 두어 빨리 열리게 하는 파일. 서버 기록(api.php, oauth)은 저장하지 않아요
-const CACHE = "study-friends-v1";
-const FILES = ["./", "./index.html", "./assets/app.css?v=1", "./assets/js/main.js?v=1", "./manifest.webmanifest", "./icon-192.png"];
+const CACHE = "study-friends-v3";
+const FILES = ["./", "./index.html", "./assets/app.css?v=3", "./assets/js/main.js?v=3", "./manifest.webmanifest", "./icon-192.png", "./icon.svg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).catch(() => {}).then(() => self.skipWaiting()));

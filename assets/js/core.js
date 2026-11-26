@@ -99,6 +99,7 @@ const P = {
   camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
   cursor: '<path d="M5 3l14 8-6 1.6L10 19z"/>',
   rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
+  diamond: '<path d="M12 3l9 9-9 9-9-9z"/>',
   circle: '<ellipse cx="12" cy="12" rx="8.5" ry="7"/>',
   line: '<path d="M5 19L19 5"/>',
   arrow: '<path d="M5 19L19 5M10 5h9v9"/>',
@@ -125,7 +126,11 @@ export const pad = (n) => String(n).padStart(2, '0');
 export const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const parseD = (s) => { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
 export const parseDT = (s) => { const [d, t = '00:00:00'] = s.split(' '); const [y, m, dd] = d.split('-').map(Number); const [hh, mi, ss] = t.split(':').map(Number); return new Date(y, m - 1, dd, hh, mi, ss || 0); };
-export const today = () => ymd(new Date());
+/* '오늘'은 서버(한국 시간) 기준이에요. 기기 시간대가 달라도 캘린더·공부 기록의 날짜가 서버와 같게 */
+let clockSkew = 0;
+export function setServerNow(s) { if (s) clockSkew = parseDT(s).getTime() - Date.now(); }
+export const nowLocal = () => new Date(Date.now() + clockSkew);
+export const today = () => ymd(nowLocal());
 export const addDays = (s, n) => { const d = parseD(s); d.setDate(d.getDate() + n); return ymd(d); };
 export const daysBetween = (a, b) => Math.round((parseD(b) - parseD(a)) / 86400000);
 export function mdw(s) { const d = parseD(s); return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WD[d.getDay()]}요일`; }
@@ -137,7 +142,7 @@ export function fmtDur(sec) {
 }
 export function ago(dt) {
   if (!dt) return '';
-  const m = Math.floor((Date.now() - parseDT(dt)) / 60000);
+  const m = Math.floor((nowLocal() - parseDT(dt)) / 60000);
   if (m < 1) return '방금';
   if (m < 60) return `${m}분 전`;
   if (m < 1440) return `${Math.floor(m / 60)}시간 전`;

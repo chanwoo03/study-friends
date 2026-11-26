@@ -3,7 +3,16 @@ import { state, api, h, icon, avatar, toast, errToast, confirmBtn, setTitle, pag
 
 export default async function mount(view, route) {
   setTitle('친구');
-  const codeEl = h('span', { class: 'code' }, '········');
+  /* 초대 코드는 평소엔 가리고, 눈 아이콘을 누르면 보여요 */
+  let realCode = '', shown = false;
+  const codeEl = h('span', { class: 'code', 'aria-live': 'polite' }, '••••••••');
+  const eyeBtn = h('button', { class: 'btn icon', type: 'button', 'aria-label': '초대 코드 보기', onclick: () => { shown = !shown; paintCode(); } }, icon('eye'));
+  function paintCode() {
+    codeEl.textContent = shown ? realCode : '••••••••';
+    codeEl.classList.toggle('hidden-code', !shown);
+    eyeBtn.replaceChildren(icon(shown ? 'eyeOff' : 'eye'));
+    eyeBtn.setAttribute('aria-label', shown ? '초대 코드 가리기' : '초대 코드 보기');
+  }
   const list = h('ul', { class: 'list' });
   const codeIn = h('input', { class: 'input', maxlength: '9', placeholder: '친구의 초대 코드 8자리', autocapitalize: 'characters', autocomplete: 'off', spellcheck: 'false', 'aria-label': '친구 초대 코드',
     style: { 'text-transform': 'uppercase', 'letter-spacing': '.08em', 'font-weight': '700' } });
@@ -15,20 +24,25 @@ export default async function mount(view, route) {
     route.query.welcome ? h('div', { class: 'banner ok', style: { 'margin-bottom': '14px' } }, '가입을 축하해요! 친구에게 내 초대 코드를 알려 주거나, 친구의 코드를 아래에 넣어 친구를 맺으세요.') : null,
     h('div', { class: 'grid2' },
       h('div', { class: 'card' }, h('h2', null, '내 초대 코드'),
-        h('div', { class: 'code-box' }, codeEl,
+        h('div', { class: 'code-box' }, codeEl, eyeBtn,
           h('button', { class: 'btn', type: 'button', onclick: copyCode }, icon('copy'), '복사')),
-        h('p', { class: 'small muted' }, '이 코드를 아는 사람은 나와 바로 친구가 될 수 있어요. 아무에게나 알려졌다면 새 코드로 바꾸세요.'),
+        h('p', { class: 'small muted' }, '이 코드를 아는 사람은 나와 바로 친구가 될 수 있어요. 그래서 평소엔 가려 둬요. 아무에게나 알려졌다면 새 코드로 바꾸세요.'),
         confirmBtn('새 코드 만들기', '한 번 더 누르면 예전 코드는 못 써요', async () => {
-          try { const r = await api.post('friends.regen'); codeEl.textContent = r.inviteCode; toast('새 초대 코드를 만들었어요'); } catch (e) { errToast(e); }
+          try { const r = await api.post('friends.regen'); realCode = r.inviteCode; paintCode(); toast('새 초대 코드를 만들었어요'); } catch (e) { errToast(e); }
         }, 'btn sm')),
       h('form', { class: 'card', onsubmit: add }, h('h2', null, '친구 추가'),
         h('div', { class: 'form' }, codeIn, addErr, addBtn))),
     h('div', { class: 'card' }, h('h2', null, '내 친구'), list));
 
   async function copyCode() {
-    const text = codeEl.textContent;
-    try { await navigator.clipboard.writeText(text); toast('초대 코드를 복사했어요'); }
-    catch (e) { const r = document.createRange(); r.selectNodeContents(codeEl); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('선택된 코드를 복사하세요'); }
+    if (!realCode) return;
+    try { await navigator.clipboard.writeText(realCode); toast('초대 코드를 복사했어요'); }
+    catch (e) {
+      // https 가 아니면 클립보드를 못 쓰는 브라우저가 있어요 → 코드를 보여 주고 선택해 둬요
+      shown = true; paintCode();
+      const r = document.createRange(); r.selectNodeContents(codeEl); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      toast('선택된 코드를 길게 눌러 복사하세요');
+    }
   }
   async function add(e) {
     e.preventDefault(); addErr.textContent = ''; addBtn.disabled = true;
@@ -42,7 +56,7 @@ export default async function mount(view, route) {
   async function load(force) {
     const [fr] = await Promise.all([loadFriends(force)]);
     const r = await api.get('friends.list');
-    codeEl.textContent = r.inviteCode;
+    realCode = r.inviteCode; paintCode();
     list.replaceChildren();
     if (!fr.length) { list.append(h('li', { class: 'empty' }, '아직 친구가 없어요. 친구의 초대 코드를 넣어 보세요')); return; }
     for (const f of r.friends) {

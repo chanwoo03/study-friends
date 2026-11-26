@@ -1,11 +1,12 @@
 /* 날짜 화면: 그날 내 공부 계획과 공부 시간, 일정, 그리고 친구별로 펼쳐 보는 진도 */
 import { state, api, h, icon, avatar, errToast, every, setTitle, today, addDays, parseD, parseDT, mdw, fmtDur, HOLIDAYS, app } from '../core.js';
 import { editEvent, eventRow, taskLine, cheerModal } from '../shared.js';
+import { journalCard, journalView } from '../journal.js';
 
 export default async function mount(view, route) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(route.params[0] || '') ? route.params[0] : today();
   setTitle(mdw(date));
-  let data = null, skew = 0;
+  let data = null, skew = 0, journal = { mine: null, friends: [] }, jCard = null;
   const open = new Set();   // 펼쳐 둔 친구
   try { (JSON.parse(sessionStorage.getItem('sf-day-open') || '[]')).forEach((x) => open.add(x)); } catch (e) {}
 
@@ -13,7 +14,8 @@ export default async function mount(view, route) {
   const mine = h('div', { class: 'card' });
   const evBox = h('div', { class: 'card' });
   const friendsBox = h('div', { class: 'card' });
-  view.append(head, h('div', { class: 'day-grid' }, mine, evBox), friendsBox);
+  const journalBox = h('div');
+  view.append(head, h('div', { class: 'day-grid' }, mine, evBox), journalBox, friendsBox);
 
   const elapsed = (since) => since ? Math.max(0, (Date.now() + skew - parseDT(since).getTime()) / 1000) : 0;
   const isToday = () => data && data.date === data.today;
@@ -90,6 +92,8 @@ export default async function mount(view, route) {
         icon('next', 'chev'));
       const ul = h('ul', { class: 'list' });
       for (const t of f.tasks) ul.append(taskLine(t, { canCheck: false, showPlan: true }));
+      const jn = (journal.friends.find((x) => x.user && x.user.id === u.id) || {}).note;
+      if (jn) { body.append(journalView(jn)); toggle.querySelector('.fr-name b').append(h('span', { class: 'jr-mark', title: '하루 기록 있음' }, icon('camera'))); }
       body.append(n ? ul : h('div', { class: 'small muted' }, '이날 보여 준 할 일이 없어요'),
         h('div', { class: 'row', style: { 'margin-top': '8px' } },
           h('button', { class: 'btn sm', type: 'button', onclick: () => cheerModal(u) }, '응원 보내기'),
@@ -99,12 +103,18 @@ export default async function mount(view, route) {
     }
   }
 
+  function paintJournal() {
+    if (jCard) return;   // 쓰는 중인 메모를 덮어쓰지 않게 한 번만 그려요
+    jCard = journalCard(date, journal.mine);
+    journalBox.replaceChildren(jCard);
+  }
   async function load() {
-    const r = await api.get('day.get', { date });
+    const [r, j] = await Promise.all([api.get('day.get', { date }), api.get('journal.get', { date })]);
+    journal = j;
     skew = parseDT(r.now).getTime() - Date.now();
     for (const p of [r.me, ...r.friends]) p._base = p.studyingSince ? elapsed(p.studyingSince) : 0;
     data = r;
-    paintHead(); paintMine(); paintEvents(); paintFriends();
+    paintHead(); paintMine(); paintEvents(); paintJournal(); paintFriends();
   }
   function tick() {
     if (!data || !isToday()) return;
@@ -116,5 +126,5 @@ export default async function mount(view, route) {
   try { await load(); } catch (e) { mine.replaceChildren(h('div', { class: 'empty' }, e.message)); return; }
   const s1 = every(10000, async () => tick());
   const s2 = every(30000, () => { const a = document.activeElement; if (!a || !view.contains(a) || a.tagName !== 'INPUT') return load(); });
-  return () => { s1(); s2(); };
+  return () => { s1(); s2(); if (jCard && jCard.flush) jCard.flush(); };
 }

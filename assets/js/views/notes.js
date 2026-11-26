@@ -42,17 +42,17 @@ export default async function mount(view, route) {
   pane.append(h('a', { class: 'btn ghost sm', href: '#/notes' }, icon('back'), '목록'), metaEl, banner, titleIn, bodyIn);
 
   function paintMeta() {
-    metaEl.replaceChildren(avatar(note.owner, 'sm'), note.mine ? '내 메모' : note.owner.name + '님의 메모',
+    metaEl.replaceChildren(...[avatar(note.owner, 'sm'), note.mine ? '내 메모' : note.owner.name + '님의 메모',
       note.mine ? h('button', { class: 'pill', type: 'button', style: { border: 0 }, onclick: share }, visIcon(note.visibility), VIS_LABEL[note.visibility]) : null,
       h('span', { class: 'grow' }), status,
       note.mine ? confirmBtn('삭제', '한 번 더 누르면 삭제', async () => {
         try { await api.post('notes.delete', { id: note.id }); toast('메모를 지웠어요'); app.go('notes'); } catch (e) { errToast(e); }
-      }, 'btn ghost sm') : null);
+      }, 'btn ghost sm') : null].filter(Boolean));
     paintStatus();
   }
   function paintStatus() {
     status.textContent = conflict ? '충돌' : saving ? '저장 중…' : dirty ? '입력 중…' :
-      (note.updatedBy && note.updatedBy.id !== state.me.id ? `${note.updatedBy.name}님이 ${ago(note.updatedAt)} 고침` : '저장됨');
+      (note.updatedBy && note.updatedBy.id !== state.me.id ? `${note.updatedBy.id ? note.updatedBy.name + '님이' : '다른 사람이'} ${ago(note.updatedAt)} 고침` : '저장됨');
   }
   function share() {
     const vis = visibilityPicker(note.visibility, note.shares);
@@ -88,7 +88,7 @@ export default async function mount(view, route) {
   function showConflict(theirs) {
     conflict = theirs;
     banner.hidden = false;
-    banner.replaceChildren(h('div', null, h('b', null, (theirs.updatedBy ? theirs.updatedBy.name : '다른 사람') + '님이 먼저 고쳤어요. '), '어느 쪽으로 할까요? 내 내용은 아래에 그대로 있어요.'),
+    banner.replaceChildren(h('div', null, h('b', null, (theirs.updatedBy && theirs.updatedBy.id ? theirs.updatedBy.name + '님이' : '다른 사람이') + ' 먼저 고쳤어요. '), '어느 쪽으로 할까요? 내 내용은 아래에 그대로 있어요.'),
       h('div', { class: 'row', style: { 'margin-top': '8px' } },
         h('button', { class: 'btn sm', type: 'button', onclick: () => { copyMine(); } }, icon('copy'), '내 내용 복사'),
         h('button', { class: 'btn sm', type: 'button', onclick: () => resolve('theirs') }, '상대 내용 불러오기'),

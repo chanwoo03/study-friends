@@ -17,7 +17,9 @@ route('board.list', 'GET', function (int $me) {
     if ($after) { $where .= ' AND p.id > ?'; $params[] = $after; }
     $posts = rows("SELECT p.* FROM posts p WHERE {$where} ORDER BY p.id DESC LIMIT 20", $params);
     $ids = array_map(fn($p) => (int)$p['id'], $posts);
-    $comments = $ids ? rows('SELECT * FROM comments WHERE post_id IN (' . in_list($ids) . ') ORDER BY id', $ids) : [];
+    // 친구 목록은 각자 비밀이에요: 나와 친구가 아닌 사람의 댓글은 보여 주지 않아요 (누가 누구 친구인지 드러나지 않게)
+    $comments = $ids ? rows('SELECT * FROM comments WHERE post_id IN (' . in_list($ids) . ')
+        AND (author_id = ? OR author_id IN (SELECT friend_id FROM friendships WHERE user_id = ?)) ORDER BY id', array_merge($ids, [$me, $me])) : [];
     $users = users_by_ids(array_merge(array_column($posts, 'author_id'), array_column($comments, 'author_id')));
     $byPost = [];
     foreach ($comments as $c) {

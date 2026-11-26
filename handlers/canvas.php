@@ -19,7 +19,8 @@ function stroke_out(array $s): array {
    pen        자유 그리기      p:[x,y,x,y,...]  c 색  w 굵기
    eraser     (예전 버전) 흰색 지우개 선
    line/arrow 선·화살표        p:[x1,y1,x2,y2]  c  w
-   rect/ellipse 네모·동그라미  p:[x1,y1,x2,y2]  c  w  f(안을 옅게 채움)
+   rect/ellipse/diamond 네모·동그라미·마름모  p:[x1,y1,x2,y2]  c  w
+              f 채우기(0 없음, 1 옅게, 2 진하게)  s 안에 쓸 글자  z 글자 크기
    text       글자             p:[x,y]  s 글자  z 크기  c
    note       포스트잇         p:[x,y,너비,높이]  s 글자  c 종이색 */
 function clean_color($v, string $def): string {
@@ -42,7 +43,7 @@ function clean_text($v, int $max): string {
 function clean_stroke($d): array {
     if (!is_array($d)) fail(400, '그림 데이터가 잘못됐어요');
     $t = (string)($d['t'] ?? 'pen');
-    if (!in_array($t, ['pen', 'eraser', 'line', 'arrow', 'rect', 'ellipse', 'text', 'note'], true)) $t = 'pen';
+    if (!in_array($t, ['pen', 'eraser', 'line', 'arrow', 'rect', 'ellipse', 'diamond', 'text', 'note'], true)) $t = 'pen';
     $c = clean_color($d['c'] ?? null, '#191f28');
     switch ($t) {
         case 'pen':
@@ -53,7 +54,13 @@ function clean_stroke($d): array {
             return ['t' => $t, 'c' => $c, 'w' => max(1, min(20, (int)($d['w'] ?? 3))), 'p' => clean_points($d['p'] ?? null, 4, 4)];
         case 'rect':
         case 'ellipse':
-            return ['t' => $t, 'c' => $c, 'w' => max(1, min(20, (int)($d['w'] ?? 3))), 'f' => !empty($d['f']), 'p' => clean_points($d['p'] ?? null, 4, 4)];
+        case 'diamond':
+            $f = $d['f'] ?? 0;
+            $f = $f === true ? 1 : max(0, min(2, (int)$f));
+            $o = ['t' => $t, 'c' => $c, 'w' => max(1, min(20, (int)($d['w'] ?? 3))), 'f' => $f, 'p' => clean_points($d['p'] ?? null, 4, 4)];
+            $label = trim(clean_text($d['s'] ?? '', 120));
+            if ($label !== '') { $o['s'] = $label; $o['z'] = max(14, min(72, (int)($d['z'] ?? 28))); }
+            return $o;
         case 'text':
             $s = trim(clean_text($d['s'] ?? '', 200));
             if ($s === '') fail(400, '글자를 입력해 주세요');

@@ -4,7 +4,7 @@ declare(strict_types=1);
    이미 설치한 사이트도 새 기능에 필요한 표·칸이 저절로 추가돼요. 기존 데이터는 건드리지 않아요.
    새 버전에서 표 구조가 바뀌면 SCHEMA_VERSION 을 올리고 아래 sf_migrations() 에 단계를 덧붙여요. */
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function sf_col_exists(PDO $db, string $table, string $col): bool {
     $st = $db->prepare('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
@@ -59,6 +59,35 @@ function sf_migrate(PDO $db): array {
             CONSTRAINT fk_tc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         $done[] = 'task_checks';
+    }
+    // v3: 하루 기록 (날짜별 메모와 사진)
+    if (!sf_table_exists($db, 'day_notes')) {
+        $db->exec("CREATE TABLE day_notes (
+            id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id    INT UNSIGNED NOT NULL,
+            day        DATE         NOT NULL,
+            memo       TEXT         NOT NULL,
+            visibility ENUM('private','friends') NOT NULL DEFAULT 'friends',
+            updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_user_day (user_id, day),
+            KEY idx_day (day),
+            CONSTRAINT fk_dn_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'day_notes';
+    }
+    if (!sf_table_exists($db, 'day_photos')) {
+        $db->exec("CREATE TABLE day_photos (
+            id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            note_id    INT UNSIGNED NOT NULL,
+            file       VARCHAR(80)  NOT NULL,
+            thumb      VARCHAR(80)  NOT NULL,
+            width      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+            height     SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+            created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_note (note_id),
+            CONSTRAINT fk_dp_note FOREIGN KEY (note_id) REFERENCES day_notes(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'day_photos';
     }
     return $done;
 }

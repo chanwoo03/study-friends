@@ -1,5 +1,5 @@
 /* 앱 시작, 로그인 화면, 메뉴, 화면 전환 */
-import { state, api, h, icon, toast, setUnauthorizedHandler, every, setTitle, avatar, app } from './core.js';
+import { state, api, h, icon, toast, setUnauthorizedHandler, every, setTitle, avatar, app, setServerNow } from './core.js';
 
 const root = document.getElementById('root');
 const NAV = [
@@ -85,7 +85,7 @@ function authScreen(query) {
   else if (!state.providers.kakao && social[0]) social[0].append('Google로 계속하기');
 
   root.replaceChildren(h('div', { class: 'auth-wrap' }, h('div', { class: 'auth' },
-    h('div', { class: 'brand' }, h('i', null, icon('check')), '공부 친구'),
+    h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'),
     h('p', { class: 'tag' }, '친구끼리만 보는 캘린더 · 공부 계획 · 메시지'),
     h('div', { class: 'card' }, form, social.length ? [h('div', { class: 'or' }, '또는'), h('div', { class: 'social' }, social)] : null),
   )));
@@ -95,26 +95,28 @@ function authScreen(query) {
 /* ===== 메뉴가 있는 화면 ===== */
 let shell = null, cleanup = null, mountSeq = 0;
 function buildShell() {
-  const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('i', null, icon('check')), '공부 친구'));
+  const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'));
   for (const [k, label, ic] of NAV) side.append(h('a', { class: 'nav-a', href: '#/' + k, 'data-k': k }, icon(ic), label, h('span', { class: 'badge-n', hidden: true })));
   side.append(h('div', { class: 'spacer' }));
   const meChip = h('a', { class: 'me-chip', href: '#/settings' });
   side.append(meChip);
   const themeBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '화면 테마 바꾸기', onclick: toggleTheme });
-  const top = h('header', { class: 'topbar' }, h('div', { class: 'brand' }, h('i', null, icon('check')), '공부 친구'), h('div', { class: 'grow' }), themeBtn,
-    h('a', { class: 'btn ghost icon', href: '#/friends', 'aria-label': '친구' }, icon('users')));
+  const topMe = h('a', { class: 'top-me', href: '#/settings', 'aria-label': '내 프로필' });
+  const top = h('header', { class: 'topbar' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'), h('div', { class: 'grow' }), themeBtn,
+    h('a', { class: 'btn ghost icon', href: '#/friends', 'aria-label': '친구' }, icon('users')), topMe);
   const tabs = h('nav', { class: 'tabbar', 'aria-label': '메뉴' });
   const tabLabel = { calendar: ['캘린더', 'calendar'], study: ['공부', 'study'], messages: ['메시지', 'chat'], board: ['보드', 'board'], more: ['더보기', 'more'] };
   for (const k of TABS) tabs.append(h('a', { class: 'tab', href: '#/' + k, 'data-k': k }, icon(tabLabel[k][1]), tabLabel[k][0], h('span', { class: 'badge-n', hidden: true })));
   const view = h('div', { class: 'page', id: 'view' });
   const main = h('main', { class: 'main' }, top, view);
   root.replaceChildren(h('div', { class: 'shell' }, side, main, tabs));
-  shell = { side, tabs, view, meChip, themeBtn };
+  shell = { side, tabs, view, meChip, themeBtn, topMe };
   paintMe(); paintTheme(); paintBadges();
 }
 export function paintMe() {
   if (!shell || !state.me) return;
   shell.meChip.replaceChildren(avatar(state.me), h('span', { class: 'grow', style: { overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' } }, state.me.name), icon('gear'));
+  shell.topMe.replaceChildren(avatar(state.me));
 }
 function paintNav(name) {
   if (name === 'day') name = 'calendar';
@@ -185,6 +187,7 @@ setUnauthorizedHandler(() => {
 async function syncBadge() {
   if (!state.me) return;
   const r = await api.get('sync');
+  setServerNow(r.now);
   if (r.unread !== state.unread) { state.unread = r.unread; paintBadges(); }
 }
 
@@ -192,6 +195,7 @@ async function boot() {
   try {
     const c = await api.get('config');
     Object.assign(state, { csrf: c.csrf, providers: c.providers, allowRegister: c.allowRegister, me: c.me });
+    setServerNow(c.now);
   } catch (e) {
     root.replaceChildren(h('div', { class: 'auth-wrap' }, h('div', { class: 'card auth' }, h('h2', null, '서버에 연결하지 못했어요'), h('p', { class: 'muted' }, e.message),
       h('button', { class: 'btn primary', type: 'button', onclick: () => location.reload() }, '다시 시도'))));

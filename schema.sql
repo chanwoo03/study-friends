@@ -126,6 +126,32 @@ CREATE TABLE IF NOT EXISTS task_checks (
   CONSTRAINT fk_tc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 하루 기록: 날짜마다 한 사람당 한 개 (메모 + 사진 여러 장)
+CREATE TABLE IF NOT EXISTS day_notes (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  day        DATE         NOT NULL,
+  memo       TEXT         NOT NULL,
+  visibility ENUM('private','friends') NOT NULL DEFAULT 'friends',
+  updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_user_day (user_id, day),
+  KEY idx_day (day),
+  CONSTRAINT fk_dn_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 하루 기록 사진 (파일은 uploads/journal, 직접 열 수 없고 api.php 가 권한 확인 후 보내 줘요)
+CREATE TABLE IF NOT EXISTS day_photos (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  note_id    INT UNSIGNED NOT NULL,
+  file       VARCHAR(80)  NOT NULL,
+  thumb      VARCHAR(80)  NOT NULL,
+  width      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  height     SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_note (note_id),
+  CONSTRAINT fk_dp_note FOREIGN KEY (note_id) REFERENCES day_notes(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS study_sessions (
   id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   user_id    INT UNSIGNED NOT NULL,

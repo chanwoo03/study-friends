@@ -1,5 +1,5 @@
 /* 친구와 1:1 메시지. 열려 있는 동안 3초마다 새 메시지를 확인해요 */
-import { state, api, h, icon, avatar, errToast, every, setTitle, hm, ago, mdw, ymd, app } from '../core.js';
+import { state, api, h, icon, avatar, errToast, every, setTitle, hm, ago, mdw, today, app } from '../core.js';
 
 const QUICK = ['화이팅!', '지금 공부 중이야', '같이 공부할래?', '수고했어'];
 
@@ -100,7 +100,7 @@ export default async function mount(view, route) {
     text = (text || '').trim();
     if (!text || sending) return;
     sending = true; sendBtn.disabled = true;
-    const temp = { id: Number.MAX_SAFE_INTEGER, mine: true, body: text, at: ymd(new Date()) + ' 00:00:00', pending: true };
+    const temp = { id: Number.MAX_SAFE_INTEGER, mine: true, body: text, at: today() + ' 00:00:00', pending: true };
     msgs.push(temp); input.value = ''; input.style.height = 'auto'; paint(true);
     try {
       const r = await api.post('messages.send', { to: withId, body: text });

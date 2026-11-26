@@ -20,6 +20,7 @@ route('config', 'GET', function (?int $me) {
         'allowRegister' => (bool)cfg('allow_register', true),
         'me'            => $me && val('SELECT id FROM users WHERE id = ?', [$me]) ? me_payload($me) : null,
         'today'         => date('Y-m-d'),
+        'now'           => date('Y-m-d H:i:s'),
     ];
 }, true);
 
@@ -118,6 +119,7 @@ route('me.unlink', 'POST', function (int $me) {
 route('me.delete', 'POST', function (int $me) {
     if ((string)arg('confirm', '') !== '탈퇴') fail(400, '확인 칸에 ‘탈퇴’라고 적어 주세요');
     $av = val('SELECT avatar FROM users WHERE id = ?', [$me]);
+    if (function_exists('journal_delete_user_files')) journal_delete_user_files($me);
     q('DELETE FROM users WHERE id = ?', [$me]);
     if (function_exists('remove_avatar_file')) remove_avatar_file($av);
     $_SESSION = [];

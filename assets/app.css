@@ -10,6 +10,8 @@
   --r: 20px;
   --sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --side: 232px;
+  --hand: "Gaegu", "Nanum Pen Script", var(--sans);
+  --paper: #fffdf5; --paper-line: #e3e9f3; --paper-margin: rgba(240, 68, 82, .32); --ink: #273246;
   color-scheme: light;
 }
 :root[data-theme="dark"] {
@@ -17,6 +19,7 @@
   --accent: #4c94ff; --accent-bg: #1b2a45; --me: #4c94ff; --you: #ff7d9f; --you-bg: #3a1f29;
   --red: #ff6b76; --red-bg: #3a1d21; --green: #3ddbad; --green-bg: #15322a; --warn-bg: #3a2f12; --warn-fg: #f2d58a;
   --scrim: rgba(0,0,0,.6); --shadow: 0 0 0 1px rgba(255,255,255,.04); --shadow-pop: 0 20px 60px rgba(0,0,0,.5);
+  --paper: #23242b; --paper-line: #33363f; --paper-margin: rgba(255, 107, 118, .3); --ink: #ece9e1;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -414,3 +417,69 @@ button.li { border: 0; background: transparent; width: calc(100% + 20px); text-a
 a.wk { display: block; text-decoration: none; color: inherit; border-radius: 8px; }
 a.wk:hover { background: var(--chip); }
 a.w { text-decoration: none; color: inherit; }
+
+/* ===== 그림판 정리 도구 ===== */
+.selbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--accent-bg); border-radius: 12px; padding: 8px 10px; }
+.board-canvas:focus { outline: none; }
+.board-canvas:focus-visible { outline: 2px solid var(--accent); }
+.toolbar .tool[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); }
+
+/* ===== 프로필 사진, 초대 코드 ===== */
+.photo { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.top-me { display: inline-flex; padding: 4px; border-radius: 50%; }
+.code.hidden-code { letter-spacing: .2em; color: var(--sub); user-select: none; }
+
+.brand img.logo { width: 30px; height: 30px; border-radius: 9px; flex: none; }
+.auth .brand img.logo { width: 40px; height: 40px; border-radius: 12px; }
+
+/* ===== 하루 기록: 즉석 사진 + 줄 노트 손글씨 (이 앱에서 유일하게 장식을 쓰는 곳) ===== */
+.journal { margin-bottom: 14px; }
+.jr-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 760px) { .jr-grid { grid-template-columns: 1fr; gap: 16px; } }
+.pol-row { display: flex; flex-wrap: wrap; gap: 18px 14px; padding: 12px 4px 6px; }
+.polaroid { margin: 0; position: relative; width: 132px; background: #ffffff; padding: 8px 8px 28px; border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(20, 30, 60, .1), 0 10px 22px rgba(20, 30, 60, .14); transform: rotate(var(--tilt, 0deg)); transition: transform .18s ease; }
+.polaroid::before { content: ""; position: absolute; top: -10px; left: 50%; width: 56px; height: 20px; transform: translateX(-50%) rotate(-4deg);
+  background: rgba(255, 224, 130, .72); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); border-radius: 2px; }
+.polaroid:hover, .polaroid:focus-within { transform: rotate(0deg) translateY(-2px); }
+.polaroid .pic { all: unset; box-sizing: border-box; display: grid; place-items: center; width: 100%; aspect-ratio: 1; background: #eef1f6; overflow: hidden; cursor: zoom-in; }
+.polaroid .pic:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.polaroid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.polaroid.loading .pic { cursor: default; }
+.pol-x { position: absolute; top: 2px; right: 2px; width: 26px; height: 26px; border-radius: 50%; border: 0; display: grid; place-items: center;
+  background: rgba(25, 31, 40, .6); color: #fff; padding: 0; }
+.pol-x svg { width: 14px; height: 14px; }
+.pol-x.armed { width: auto; padding: 0 9px; border-radius: 999px; background: var(--red); font-size: 12px; font-weight: 700; }
+.pol-add { width: 132px; aspect-ratio: .78; border: 2px dashed var(--line); border-radius: 6px; background: transparent; color: var(--sub);
+  display: grid; place-items: center; align-content: center; gap: 4px; font-size: 13px; font-weight: 600; }
+.pol-add:hover { border-color: var(--accent); color: var(--accent); }
+.pol-add small { color: var(--faint); font-weight: 500; }
+.jr-paper { display: block; width: 100%; min-height: 192px; resize: vertical; border: 0; border-radius: 12px; color: var(--ink);
+  font-family: var(--hand); font-size: 22px; line-height: 32px; letter-spacing: 0; padding: 0 16px 0 48px;
+  background-color: var(--paper); background-attachment: local;
+  background-image: linear-gradient(90deg, transparent 34px, var(--paper-margin) 34px, var(--paper-margin) 35px, transparent 35px),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 31px, var(--paper-line) 31px, var(--paper-line) 32px);
+  box-shadow: inset 0 0 0 1px var(--line); }
+.jr-paper:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.jr-paper::placeholder { color: var(--faint); }
+.jr-paper.read { min-height: 0; white-space: pre-wrap; padding-bottom: 0; margin-top: 8px; }
+.jr-view { margin-bottom: 12px; }
+.vis-chip { border: 0; cursor: pointer; }
+.jr-mark { display: inline-flex; margin-left: 6px; color: var(--accent); vertical-align: -2px; }
+.jr-mark svg { width: 15px; height: 15px; }
+/* 캘린더 칸의 작은 즉석 사진 */
+.cal-photo { position: absolute; top: 6px; right: 6px; width: 34px; height: 40px; padding: 3px 3px 8px; background: #ffffff; border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(20, 30, 60, .22); transform: rotate(var(--tilt, 0deg)); pointer-events: none; }
+.cal-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dcell:has(.cal-photo) .hn { display: none; }
+.dcell:has(.cal-photo) .ev:nth-of-type(-n+2) { margin-right: 38px; }
+.cal-jr { display: flex; gap: 8px; padding-left: 4px; font-size: 11px; color: var(--sub); }
+.cal-jr span { display: inline-flex; align-items: center; gap: 2px; }
+.cal-jr svg { width: 12px; height: 12px; }
+@media (max-width: 640px) {
+  .cal-photo { width: 22px; height: 26px; padding: 2px 2px 5px; top: 4px; right: 3px; }
+  .cal-jr { display: none; }
+  .polaroid, .pol-add { width: calc(50% - 8px); }
+}
+.lb { display: grid; place-items: center; background: #0f1115; border-radius: 16px; overflow: hidden; }
+.lb-img { display: block; max-width: 100%; max-height: 72dvh; object-fit: contain; }

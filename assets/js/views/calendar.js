@@ -1,6 +1,7 @@
 /* 공유 캘린더: 내 일정 + 친구가 보여 준 일정 + 공부 계획의 할 일 */
 import { state, api, h, icon, avatar, errToast, loadFriends, every, setTitle, WD, ymd, parseD, today, addDays, mdw, HOLIDAYS, app } from '../core.js';
 import { editEvent } from '../shared.js';
+import { photoUrl } from '../journal.js';
 
 /* 날짜를 누르면 그날 화면(#/day/날짜)으로 들어가요 */
 
@@ -18,7 +19,7 @@ export default async function mount(view, route) {
       h('div', { class: 'card' },
         h('div', { class: 'cal-head' }, title,
           h('button', { class: 'btn icon sm', type: 'button', 'aria-label': '이전 달', onclick: () => move(-1) }, icon('back')),
-          h('button', { class: 'btn sm', type: 'button', onclick: () => { const d = new Date(); S.y = d.getFullYear(); S.m = d.getMonth(); S.sel = today(); load(); } }, '오늘'),
+          h('button', { class: 'btn sm', type: 'button', onclick: () => { const d = parseD(today()); S.y = d.getFullYear(); S.m = d.getMonth(); S.sel = today(); load(); } }, '오늘'),
           h('button', { class: 'btn icon sm', type: 'button', 'aria-label': '다음 달', onclick: () => move(1) }, icon('next')),
           h('div', { class: 'grow' }),
           h('button', { class: 'btn primary sm', type: 'button', onclick: () => editEvent(null, S.sel, () => load(true)) }, icon('plus'), '일정')),
@@ -38,8 +39,9 @@ export default async function mount(view, route) {
     const { start, end } = range();
     if (!quiet) { S.loading = true; paint(); }
     try {
-      const [ev, tk, fr] = await Promise.all([api.get('events.list', { from: start, to: end }), api.get('tasks.range', { from: start, to: end }), loadFriends()]);
-      S.events = ev.events; S.tasks = tk.tasks; S.friends = fr;
+      const [ev, tk, fr, jr] = await Promise.all([api.get('events.list', { from: start, to: end }), api.get('tasks.range', { from: start, to: end }), loadFriends(),
+        api.get('journal.month', { from: start, to: end }).catch(() => ({ days: {} }))]);
+      S.events = ev.events; S.tasks = tk.tasks; S.friends = fr; S.journal = jr.days || {};
     } catch (e) { if (!quiet) errToast(e); }
     S.loading = false;
     paint();
@@ -80,6 +82,12 @@ export default async function mount(view, route) {
         'aria-label': `${mdw(ds)}${hol ? ', ' + hol : ''}, 일정 ${dayEv.length}개${dayTk.length ? ', 할 일 ' + dayTk.length + '개' : ''}`,
         onclick: () => app.go('day/' + ds) },
         h('span', { class: 'n' }, d.getDate()), hol && !out ? h('span', { class: 'hn' }, hol) : null);
+      /* 하루 기록: 내 사진이 있으면 작은 즉석 사진, 메모만 있으면 연필 표시, 친구 기록은 숫자 */
+      const jd = (S.journal || {})[ds];
+      if (jd && jd.mine && jd.mine.photo) cell.append(h('span', { class: 'cal-photo', style: { '--tilt': ((d.getDate() % 3) - 1) * 3 + 'deg' } }, h('img', { src: photoUrl(jd.mine.photo), alt: '', loading: 'lazy' })));
+      if (jd && ((jd.mine && !jd.mine.photo && jd.mine.memo) || jd.friends)) cell.append(h('span', { class: 'cal-jr' },
+        jd.mine && !jd.mine.photo && jd.mine.memo ? h('span', { title: '내 메모 있음' }, icon('edit')) : null,
+        jd.friends ? h('span', { title: `친구 ${jd.friends}명이 기록을 남겼어요` }, icon('camera'), jd.friends) : null));
       dayEv.slice(0, 3).forEach((e) => cell.append(h('span', { class: 'ev', style: { '--c': e.color, '--o': e.owner.color } }, e.mine ? null : h('span', { class: 'who' }), h('span', { class: 'tt' }, (e.startTime && e.startDate === ds ? e.startTime + ' ' : '') + e.title))));
       if (dayEv.length > 3) cell.append(h('span', { class: 'more' }, `+${dayEv.length - 3}개`));
       if (dayTk.length) {

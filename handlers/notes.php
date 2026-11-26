@@ -2,13 +2,20 @@
 declare(strict_types=1);
 /* 같이 쓰는 메모장. 공유받은 사람도 고칠 수 있고, 동시에 고치면 version 으로 충돌을 알려 줘요 */
 
+/* 마지막으로 고친 사람. 나와 친구가 아니면 이름을 숨겨요 (친구 목록은 각자 비밀) */
+function note_editor(array $n, int $me, array $users): ?array {
+    if (!$n['updated_by']) return null;
+    $u = (int)$n['updated_by'];
+    if ($u === $me || is_friend($me, $u)) return $users[$u] ?? null;
+    return ['id' => 0, 'name' => '다른 사람', 'color' => '#8b95a1', 'avatar' => null];
+}
 function note_out(array $n, int $me, array $users, bool $withBody): array {
     $own = (int)$n['owner_id'] === $me;
     $o = ['id' => (int)$n['id'], 'owner' => $users[(int)$n['owner_id']] ?? null, 'mine' => $own, 'title' => $n['title'],
           'visibility' => $own ? $n['visibility'] : null,
           'shares' => $own && $n['visibility'] === 'selected' ? shares_of('note', (int)$n['id']) : [],
           'version' => (int)$n['version'], 'updatedAt' => $n['updated_at'],
-          'updatedBy' => $n['updated_by'] ? ($users[(int)$n['updated_by']] ?? null) : null];
+          'updatedBy' => note_editor($n, $me, $users)];
     if ($withBody) $o['body'] = $n['body'];
     else $o['preview'] = mb_substr(preg_replace('/\s+/u', ' ', $n['body']), 0, 80);
     return $o;

@@ -12,7 +12,7 @@ function route(string $name, string $method, callable $fn, bool $public = false)
     global $ROUTES;
     $ROUTES[$name] = [$method, $fn, $public];
 }
-foreach (['auth', 'friends', 'events', 'study', 'messages', 'board', 'canvas', 'notes'] as $h) {
+foreach (['auth', 'friends', 'events', 'study', 'messages', 'board', 'canvas', 'notes', 'journal'] as $h) {
     require __DIR__ . '/handlers/' . $h . '.php';
 }
 
