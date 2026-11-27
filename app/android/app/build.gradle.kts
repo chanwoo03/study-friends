@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.chanwlab.study_friends"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37   // 알림 라이브러리(flutter_local_notifications)가 37 이상을 요구해요
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -29,6 +29,12 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // 배포용 빌드 때 자동 코드 검사(lint)는 건너뛰어요 (검사 도구 자체 오류로 빌드가 멈추는 일을 막아요)
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     buildTypes {
