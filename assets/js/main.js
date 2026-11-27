@@ -1,6 +1,7 @@
 /* 앱 시작, 로그인 화면, 메뉴, 화면 전환 */
 import { state, api, h, icon, toast, setUnauthorizedHandler, every, setTitle, avatar, app, setServerNow, inApp } from './core.js';
 import { noticeFloat } from './notice.js';
+import { webPushOn, forgetPush } from './webpush.js';
 
 const root = document.getElementById('root');
 const NAV = [
@@ -200,6 +201,7 @@ export async function logout() {
   try { const r = await api.post('auth.logout'); state.csrf = r.csrf; } catch (e) {}
   state.me = null; state.friends = []; state.friendsAt = 0; state.notifLast = null; state.notifUnread = 0;
   try { localStorage.removeItem('sf-device'); } catch (e) {}
+  forgetPush();
   if (inApp()) window.SFApp.postMessage(JSON.stringify({ type: 'logout' }));
   go('login'); render();
 }
@@ -223,6 +225,7 @@ async function syncBadge() {
 function showNotif(n) {
   if (location.hash.replace(/^#/, '') === n.link) return;
   if (inApp()) { window.SFApp.postMessage(JSON.stringify({ type: 'notify', id: n.id, title: n.title, body: n.body, link: n.link, kind: n.kind })); return; }
+  if (webPushOn()) return;   // 이 기기는 푸시로 이미 알림이 떠요
   toast(n.title + (n.body ? ' · ' + n.body : ''));
 }
 /* 앱으로 열었으면 이 기기를 알림 받을 곳으로 등록 (로그인한 사람마다 한 번) */
@@ -240,7 +243,7 @@ window.sfRegisterDevice = () => registerDevice().catch(() => {});   // 앱이 '�
 async function boot() {
   try {
     const c = await api.get('config');
-    Object.assign(state, { csrf: c.csrf, providers: c.providers, allowRegister: c.allowRegister, me: c.me });
+    Object.assign(state, { csrf: c.csrf, providers: c.providers, allowRegister: c.allowRegister, me: c.me, webPush: c.webPush || null });
     setServerNow(c.now);
   } catch (e) {
     root.replaceChildren(h('div', { class: 'auth-wrap' }, h('div', { class: 'card auth' }, h('h2', null, '서버에 연결하지 못했어요'), h('p', { class: 'muted' }, e.message),

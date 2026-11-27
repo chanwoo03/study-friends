@@ -34,6 +34,19 @@ return [
     'client_secret' => '',   // 카카오 로그인 > 보안 > Client Secret 을 '사용함'으로 했을 때만
   ],
 
+  // 휴대폰 푸시 서버 열쇠 위치 (Firebase 서비스 계정 키). 비워 두면 www 바깥의 fcm-key.json 을 찾아요.
+  'fcm_key' => '',
+
+  // 아이폰(홈 화면 웹앱)·컴퓨터 브라우저 푸시 — https 에서만 동작해요. Firebase 콘솔 > 프로젝트 설정 > 일반(웹 앱) / 클라우드 메시징(웹 푸시 인증서)
+  // 이 값들은 공개 식별자라 비밀은 아니에요. 비워 두면 브라우저 푸시는 꺼져요.
+  'firebase_web' => [
+    'apiKey'            => '',
+    'appId'             => '',
+    'projectId'         => '',
+    'messagingSenderId' => '',
+    'vapidKey'          => '',   // 웹 푸시 인증서 > 키 쌍 (공개 키)
+  ],
+
   // 구글 로그인 (https://console.cloud.google.com > API 및 서비스 > 사용자 인증 정보)
   // 비워 두면 구글 버튼이 안 보여요.
   'google' => [

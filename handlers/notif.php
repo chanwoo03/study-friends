@@ -74,6 +74,26 @@ route('notif.fcm', 'POST', function (?int $unused) {
     return ['push' => fcm_enabled()];
 }, true, true);
 
+/* 브라우저 푸시(아이폰 홈 화면 웹앱 등) 켜기·끄기 */
+route('notif.webpush', 'POST', function (int $me) {
+    $fcm = (string)arg('fcm', '');
+    if (!preg_match('/^[A-Za-z0-9_:\-]{20,255}$/', $fcm)) fail(400, '푸시 주소가 잘못됐어요');
+    q('DELETE FROM notif_devices WHERE fcm_token = ?', [$fcm]);   // 같은 브라우저의 옛 등록(다른 사람 것 포함) 정리
+    $hash = hash('sha256', bin2hex(random_bytes(24)));
+    q('INSERT INTO notif_devices (user_id, token_hash, last_seen, fcm_token) VALUES (?, ?, NOW(), ?)', [$me, $hash, $fcm]);
+    $_SESSION['web_device'] = $hash;
+    $ids = array_map('intval', array_column(rows('SELECT id FROM notif_devices WHERE user_id = ? ORDER BY id DESC', [$me]), 'id'));
+    foreach (array_slice($ids, 8) as $old) q('DELETE FROM notif_devices WHERE id = ?', [$old]);
+    return ['ok' => true];
+});
+route('notif.webpush_off', 'POST', function (int $me) {
+    $fcm = (string)arg('fcm', '');
+    if ($fcm !== '') q('DELETE FROM notif_devices WHERE user_id = ? AND fcm_token = ?', [$me, $fcm]);
+    if (!empty($_SESSION['web_device'])) q('DELETE FROM notif_devices WHERE user_id = ? AND token_hash = ?', [$me, (string)$_SESSION['web_device']]);
+    unset($_SESSION['web_device']);
+    return ['ok' => true];
+});
+
 /* 앱이 꺼져 있을 때 15분마다 부르는 곳 (로그인 대신 기기 열쇠) */
 route('notif.pull', 'GET', function (?int $unused) {
     $d = device_by_token();

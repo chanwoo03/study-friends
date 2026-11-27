@@ -84,6 +84,7 @@ function fcm_send_one(string $token, string $project, int $deviceId, string $fcm
         'token' => $fcmToken,
         'data' => ['id' => (string)$nid, 'kind' => $kind, 'title' => $title, 'body' => $body, 'link' => $link],
         'android' => ['priority' => 'HIGH', 'ttl' => '86400s', 'collapse_key' => substr($kind . $link, 0, 60)],
+        'webpush' => ['headers' => ['Urgency' => 'high', 'TTL' => '86400']],   // 아이폰 홈 화면 웹앱·브라우저
     ]];
     $ch = curl_init("https://fcm.googleapis.com/v1/projects/{$project}/messages:send");
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_POST => true,

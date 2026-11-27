@@ -21,8 +21,18 @@ route('config', 'GET', function (?int $me) {
         'me'            => $me && val('SELECT id FROM users WHERE id = ?', [$me]) ? me_payload($me) : null,
         'today'         => date('Y-m-d'),
         'now'           => date('Y-m-d H:i:s'),
+        'webPush'       => web_push_config(),
     ];
 }, true);
+
+/* 아이폰·컴퓨터 브라우저 푸시용 Firebase 웹 설정 (config.php 의 firebase_web). https 이고 서버 열쇠가 있을 때만 켜요 */
+function web_push_config(): ?array {
+    $w = cfg('firebase_web', null);
+    if (!is_array($w) || empty($w['apiKey']) || empty($w['appId']) || empty($w['projectId']) || empty($w['messagingSenderId']) || empty($w['vapidKey'])) return null;
+    if (!is_https() || !function_exists('fcm_enabled') || !fcm_enabled()) return null;
+    return ['apiKey' => (string)$w['apiKey'], 'appId' => (string)$w['appId'], 'projectId' => (string)$w['projectId'],
+            'messagingSenderId' => (string)$w['messagingSenderId'], 'vapidKey' => (string)$w['vapidKey']];
+}
 
 function check_rate_limit(string $username): void {
     $ip = client_ip();
@@ -77,7 +87,9 @@ route('auth.login', 'POST', function (?int $me) {
 }, true);
 
 route('auth.logout', 'POST', function (?int $me) {
-    if (!empty($_SESSION['notif_device'])) q('DELETE FROM notif_devices WHERE token_hash = ?', [(string)$_SESSION['notif_device']]);   // 이 앱 기기 알림 멈추기
+    foreach (['notif_device', 'web_device'] as $k) {   // 이 기기(앱·브라우저) 알림 멈추기
+        if (!empty($_SESSION[$k])) q('DELETE FROM notif_devices WHERE token_hash = ?', [(string)$_SESSION[$k]]);
+    }
     $_SESSION = [];
     session_regenerate_id(true);
     return ['csrf' => csrf_token()];

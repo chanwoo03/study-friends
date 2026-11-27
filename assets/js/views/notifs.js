@@ -1,5 +1,6 @@
 /* 알림 목록과 알림 설정 */
 import { state, api, h, icon, avatar, ago, setTitle, pageHead, errToast, toast, app, every, today } from '../core.js';
+import { pushStatus, enablePush, disablePush } from '../webpush.js';
 
 const KIND_ICON = { message: 'chat', event: 'calendar', plan: 'study', share: 'note', board: 'board' };
 const KIND_HINT = {
@@ -36,9 +37,29 @@ export default async function mount(view) {
     }
     listEl.replaceChildren(...rows);
   }
+  /* 이 기기에서 푸시 받기 (아이폰 홈 화면 웹앱·컴퓨터 브라우저) */
+  function pushRow() {
+    const st = pushStatus();
+    if (st === 'unavailable') return null;
+    const msg = {
+      'ios-home': '아이폰은 Safari 아래 공유 버튼 → ‘홈 화면에 추가’로 설치한 뒤, 홈 화면의 공부 친구 아이콘으로 열면 푸시를 켤 수 있어요 (iOS 16.4 이상)',
+      unsupported: '이 브라우저는 푸시를 지원하지 않아요',
+      denied: '알림이 차단돼 있어요. 휴대폰·브라우저 설정에서 이 사이트 알림을 허용해 주세요',
+      on: '앱을 꺼도 이 기기로 바로 알림이 와요',
+      off: '켜면 앱을 꺼도 이 기기로 바로 알림이 와요',
+    }[st];
+    const btn = (st === 'on' || st === 'off') ? h('button', { class: 'btn sm' + (st === 'off' ? ' primary' : ''), type: 'button', onclick: async () => {
+      btn.disabled = true;
+      try { if (st === 'off') { await enablePush(); toast('이 기기에서 푸시를 켰어요'); } else { await disablePush(); toast('이 기기 푸시를 껐어요'); } }
+      catch (e) { errToast(e); }
+      paintPrefs();
+    } }, st === 'off' ? '켜기' : '끄기') : null;
+    return h('div', { class: 'nt-push' + (st === 'on' ? ' on' : '') }, h('span', { class: 'nt-ico k-message' }, h('i', null, icon('bell'))),
+      h('span', { class: 'grow' }, h('b', null, '이 기기에서 푸시 받기'), h('span', { class: 'tiny muted' }, msg)), btn);
+  }
   function paintPrefs() {
     const off = new Set(data.off);
-    prefsEl.replaceChildren(h('h3', { class: 'card-title' }, icon('gear'), '알림 받을 것'),
+    prefsEl.replaceChildren(h('h3', { class: 'card-title' }, icon('gear'), '알림 받을 것'), pushRow(),
       h('p', { class: 'small muted' }, '끄면 그 종류는 알림 목록과 휴대폰 알림에 오지 않아요. 내 혼자 쓰는 것은 원래 알리지 않아요.'),
       h('div', { class: 'nt-prefs' }, Object.entries(data.kinds).map(([k, label]) => {
         const cb = h('input', { type: 'checkbox', role: 'switch', checked: !off.has(k), 'aria-label': label + ' 알림',
