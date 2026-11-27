@@ -21,11 +21,17 @@
 > **구글 로그인은 앱에서 안 돼요.** 구글이 앱 안 웹 화면에서의 로그인을 막아 두었어요.
 > 앱에서는 아이디/비밀번호나 카카오로 로그인하세요. (같은 계정에 연결해 두면 돼요)
 
+## APK 받기 (친구들에게는 이 주소만 보내면 돼요)
+
+항상 최신 APK: **https://github.com/chanwoo03/study-friends/releases/latest/download/study-friends.apk**
+
+GitHub 로그인 없이 받을 수 있어요. 지난 버전은 저장소의 **Releases** 페이지에 있어요.
+
 ## APK 만들기 (가장 쉬운 방법: GitHub에서)
 
 1. GitHub 저장소 → **Actions** 탭 → **안드로이드 앱 만들기** → **Run workflow**
 2. 주소 칸은 그대로 두고 (또는 내 사이트 주소) 초록 버튼을 눌러요
-3. 5~10분 뒤 끝난 작업을 열고 아래 **Artifacts → study-friends-apk** 를 내려받아요
+3. 5~10분 뒤 **Releases**에 새 APK가 올라가요 (main에 `app/` 코드가 바뀌어 올라오면 저절로 만들어요)
 4. 압축을 풀면 `app-release.apk` → 휴대폰으로 옮겨 설치 ("출처를 알 수 없는 앱" 허용 필요)
 
 ## 내 컴퓨터에서 만들기
