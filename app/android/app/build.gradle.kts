@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.chanwlab.study_friends"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37   // 알림 라이브러리(flutter_local_notifications)가 37 이상을 요구해요
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
