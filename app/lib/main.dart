@@ -15,6 +15,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'notifications.dart';
+import 'push.dart';
 
 const String appUrl = String.fromEnvironment('APP_URL', defaultValue: 'http://chanwlab.com/study_friend/');
 
@@ -35,7 +36,8 @@ Future<void> main() async {
   try {
     await initNotifications(onTap: (link) { if (link != null && link.isNotEmpty) pendingLink.value = link; });
     pendingLink.value = await launchLink();
-    if (Platform.isAndroid) await Workmanager().initialize(callbackDispatcher);
+    if (Platform.isAndroid) await Workmanager().initialize(callbackDispatcher);   // 예비: 15분마다 확인
+    await setupPush();   // 바로 오는 휴대폰 푸시 (Firebase 설정이 있을 때)
   } catch (_) {}
   runApp(const StudyFriendsApp());
 }
@@ -150,6 +152,7 @@ class _WebShellState extends State<WebShell> {
           // 내 사이트가 보낸 등록만 받아요 (앱 안에서 열린 다른 페이지가 알림 주소를 바꾸지 못하게)
           if (Uri.tryParse('${msg['api']}')?.host != Uri.parse(appUrl).host) return;
           await saveDevice('${msg['token']}', '${msg['api']}', (msg['lastId'] as num? ?? 0).toInt());
+          await syncFcmToken();
           return;
         case 'logout':
           await clearDevice();

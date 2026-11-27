@@ -6,12 +6,13 @@ require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/auth.php';
 require __DIR__ . '/lib/access.php';
 require __DIR__ . '/lib/notify.php';
+require __DIR__ . '/lib/fcm.php';
 
 $ROUTES = [];
-/* $method: GET(읽기) / POST(쓰기). $public: 로그인 없이 부를 수 있는지 */
-function route(string $name, string $method, callable $fn, bool $public = false): void {
+/* $method: GET(읽기) / POST(쓰기). $public: 로그인 없이 부를 수 있는지. $device: 로그인 대신 앱 기기 열쇠로 확인하는 곳(CSRF 검사 없음) */
+function route(string $name, string $method, callable $fn, bool $public = false, bool $device = false): void {
     global $ROUTES;
-    $ROUTES[$name] = [$method, $fn, $public];
+    $ROUTES[$name] = [$method, $fn, $public, $device];
 }
 foreach (['auth', 'friends', 'events', 'study', 'messages', 'board', 'canvas', 'notes', 'journal', 'notif'] as $h) {
     require __DIR__ . '/handlers/' . $h . '.php';
@@ -20,9 +21,9 @@ foreach (['auth', 'friends', 'events', 'study', 'messages', 'board', 'canvas', '
 try {
     $a = (string)($_GET['a'] ?? '');
     if (!isset($ROUTES[$a])) fail(404, '알 수 없는 요청이에요');
-    [$method, $fn, $public] = $ROUTES[$a];
+    [$method, $fn, $public, $device] = $ROUTES[$a];
     if ($_SERVER['REQUEST_METHOD'] !== $method) fail(405, '요청 방식이 맞지 않아요');
-    if ($method === 'POST') check_csrf();
+    if ($method === 'POST' && !$device) check_csrf();
     $me = $public ? uid() : me();
     $res = $fn($me);
     json_out(200, ['ok' => true] + ($res ?? []));

@@ -285,6 +285,7 @@ CREATE TABLE IF NOT EXISTS notif_devices (
   token_hash CHAR(64)     NOT NULL,
   created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_seen  DATETIME     NULL,
+  fcm_token  VARCHAR(255) NULL,
   UNIQUE KEY uq_token (token_hash),
   KEY idx_user (user_id),
   CONSTRAINT fk_nd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

@@ -44,6 +44,15 @@ if (is_array($cfg)) {
         if (!is_dir($p) || !is_writable($p)) $bad[] = $d;
     }
     item('사진·파일 저장 폴더 쓰기 가능', !$bad, !$bad ? '사용 가능 (uploads/avatars, journal, proofs, messages)' : 'uploads 안의 ' . implode(', ', $bad) . ' 폴더에 쓸 수 없어요. FTP 프로그램에서 uploads 폴더와 그 안의 폴더 권한을 755 (안 되면 707) 로 바꿔 주세요');
+    // 휴대폰 푸시(FCM, 선택): 서버 열쇠는 웹 폴더 바깥에 있어야 해요
+    $fk = (string)($cfg['fcm_key'] ?? '') ?: dirname(__DIR__, 2) . '/fcm-key.json';
+    $exposed = is_file(__DIR__ . '/fcm-key.json') || is_file(dirname(__DIR__) . '/fcm-key.json');
+    if ($exposed) item('휴대폰 푸시 열쇠 위치', false, '위험: fcm-key.json 이 웹에서 열 수 있는 폴더에 있어요. FTP 맨 위(www 바깥) 폴더로 옮겨 주세요');
+    elseif (is_file($fk)) {
+        $kj = json_decode((string)@file_get_contents($fk), true);
+        $okKey = is_array($kj) && !empty($kj['client_email']) && !empty($kj['private_key']) && !empty($kj['project_id']);
+        item('휴대폰 푸시 (선택)', $okKey && function_exists('openssl_sign'), $okKey ? '켜짐 (프로젝트: ' . htmlspecialchars((string)$kj['project_id']) . ')' : 'fcm-key.json 을 읽지 못했어요. Firebase 에서 받은 서비스 계정 키 파일이 맞는지 확인해 주세요');
+    } else item('휴대폰 푸시 (선택)', true, '아직 안 켰어요. 켜면 앱을 꺼도 바로 알림이 가요 (README 참고)');
 
     $db = $cfg['db'] ?? [];
     try {

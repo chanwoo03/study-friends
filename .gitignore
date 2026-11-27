@@ -15,3 +15,8 @@ uploads/proofs/*
 !uploads/proofs/.htaccess
 uploads/messages/*
 !uploads/messages/.htaccess
+
+# 휴대폰 푸시 서버 열쇠 (절대 올리지 않기)
+fcm-key.json
+*service-account*.json
+*firebase-adminsdk*.json

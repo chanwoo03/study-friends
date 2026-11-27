@@ -38,6 +38,7 @@ function notify(array $to, int $actor, string $kind, string $ref, callable $make
             [$title, $body] = $make($name, $cnt);
             q('INSERT INTO notifications (user_id, actor_id, kind, title, body, link, ref_key, cnt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
               [$u, $actor, $kind, mb_substr($title, 0, 120), mb_substr($body, 0, 300), mb_substr($link, 0, 120), mb_substr($ref, 0, 60), $cnt]);
+            if (function_exists('fcm_queue')) fcm_queue($u, (int)db()->lastInsertId(), $kind, mb_substr($title, 0, 120), mb_substr($body, 0, 300), mb_substr($link, 0, 120));
         }
         if (random_int(1, 50) === 1) q('DELETE FROM notifications WHERE created_at < NOW() - INTERVAL 30 DAY');
     } catch (Throwable $e) {

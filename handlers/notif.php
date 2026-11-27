@@ -55,12 +55,28 @@ route('notif.device', 'POST', function (int $me) {
     return ['token' => $token, 'lastId' => (int)val('SELECT COALESCE(MAX(id), 0) FROM notifications WHERE user_id = ?', [$me])];
 });
 
-/* 앱이 꺼져 있을 때 15분마다 부르는 곳 (로그인 대신 기기 열쇠) */
-route('notif.pull', 'GET', function (?int $unused) {
-    $token = (string)($_GET['token'] ?? '');
+/* 기기 열쇠로 기기 찾기 */
+function device_by_token(): array {
+    $token = (string)($_GET['token'] ?? arg('token', ''));
     if (!preg_match('/^[0-9a-f]{48}$/', $token)) fail(401, '기기 열쇠가 잘못됐어요');
     $d = row('SELECT * FROM notif_devices WHERE token_hash = ?', [hash('sha256', $token)]);
     if (!$d) fail(401, '등록되지 않은 기기예요');
+    return $d;
+}
+
+/* 앱이 휴대폰 푸시 주소(FCM 토큰)를 알려 주는 곳 */
+route('notif.fcm', 'POST', function (?int $unused) {
+    $d = device_by_token();
+    $fcm = (string)arg('fcm', '');
+    if ($fcm !== '' && !preg_match('/^[A-Za-z0-9_:\-]{20,255}$/', $fcm)) fail(400, '푸시 주소가 잘못됐어요');
+    if ($fcm !== '') q('UPDATE notif_devices SET fcm_token = NULL WHERE fcm_token = ? AND id <> ?', [$fcm, $d['id']]);   // 같은 휴대폰의 옛 등록 정리
+    q('UPDATE notif_devices SET fcm_token = ?, last_seen = NOW() WHERE id = ?', [$fcm === '' ? null : $fcm, $d['id']]);
+    return ['push' => fcm_enabled()];
+}, true, true);
+
+/* 앱이 꺼져 있을 때 15분마다 부르는 곳 (로그인 대신 기기 열쇠) */
+route('notif.pull', 'GET', function (?int $unused) {
+    $d = device_by_token();
     q('UPDATE notif_devices SET last_seen = NOW() WHERE id = ?', [$d['id']]);
     $after = max(0, (int)($_GET['after'] ?? 0));
     $list = rows('SELECT id, kind, title, body, link FROM notifications WHERE user_id = ? AND id > ? AND read_at IS NULL AND created_at > NOW() - INTERVAL 3 DAY ORDER BY id ASC LIMIT 20',

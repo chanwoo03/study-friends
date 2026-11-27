@@ -90,6 +90,13 @@ Future<void> saveDevice(String token, String api, int lastId) async {
 
 Future<bool> hasDevice() async => (await _prefs.getString(_kToken)) != null;
 
+/// 등록된 기기 열쇠와 서버 주소 (푸시 주소를 서버에 알릴 때 써요)
+Future<({String token, String api})?> deviceInfo() async {
+  final token = await _prefs.getString(_kToken);
+  final api = await _prefs.getString(_kApi);
+  return (token == null || api == null) ? null : (token: token, api: api);
+}
+
 Future<void> clearDevice() async {
   await _prefs.remove(_kToken);
   if (Platform.isAndroid) await Workmanager().cancelByUniqueName(pullTask);
