@@ -79,15 +79,16 @@ export default function mount(view, route) {
 
   /* 기타 */
   const del = h('input', { class: 'input', placeholder: '탈퇴', 'aria-label': '탈퇴 확인' });
+  const delPw = state.me.hasPassword ? h('input', { class: 'input', type: 'password', placeholder: '지금 비밀번호', 'aria-label': '탈퇴 비밀번호 확인', autocomplete: 'current-password' }) : null;
   const etc = h('div', { class: 'card' }, h('h2', null, '기타'),
     h('div', { class: 'row' },
       h('button', { class: 'btn', type: 'button', onclick: app.toggleTheme }, icon('moon'), '라이트/다크 바꾸기'),
       h('button', { class: 'btn', type: 'button', onclick: () => app.logout() }, icon('logout'), '로그아웃')),
     h('details', { style: { 'margin-top': '18px' } }, h('summary', { class: 'small muted', style: { cursor: 'pointer' } }, '회원 탈퇴'),
       h('div', { class: 'form', style: { 'margin-top': '10px' } },
-        h('p', { class: 'small muted', style: { margin: 0 } }, '일정·계획·메시지·글·그림·메모가 모두 지워지고 되돌릴 수 없어요. 아래 칸에 ‘탈퇴’라고 적고 버튼을 누르세요.'),
-        del, h('div', null, confirmBtn('탈퇴하기', '한 번 더 누르면 탈퇴', async () => {
-          try { await api.post('me.delete', { confirm: del.value.trim() }); state.me = null; app.go('login'); app.render(); } catch (e) { errToast(e); }
+        h('p', { class: 'small muted', style: { margin: 0 } }, '일정·계획·메시지·글·그림·메모가 모두 지워지고 되돌릴 수 없어요. 아래 칸에 ‘탈퇴’라고 적고' + (delPw ? ' 비밀번호를 넣은 뒤' : '') + ' 버튼을 누르세요.'),
+        del, delPw, h('div', null, confirmBtn('탈퇴하기', '한 번 더 누르면 탈퇴', async () => {
+          try { await api.post('me.delete', { confirm: del.value.trim(), password: delPw ? delPw.value : '' }); state.me = null; app.go('login'); app.render(); } catch (e) { errToast(e); }
         })))));
 
   view.append(pageHead('설정', null), notice,

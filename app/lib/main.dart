@@ -147,6 +147,8 @@ class _WebShellState extends State<WebShell> {
           await showNotif(id: (msg['id'] as num).toInt(), kind: '${msg['kind']}', title: '${msg['title']}', body: '${msg['body'] ?? ''}', link: '${msg['link'] ?? ''}');
           return;
         case 'device':
+          // 내 사이트가 보낸 등록만 받아요 (앱 안에서 열린 다른 페이지가 알림 주소를 바꾸지 못하게)
+          if (Uri.tryParse('${msg['api']}')?.host != Uri.parse(appUrl).host) return;
           await saveDevice('${msg['token']}', '${msg['api']}', (msg['lastId'] as num? ?? 0).toInt());
           return;
         case 'logout':

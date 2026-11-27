@@ -119,6 +119,9 @@ route('me.unlink', 'POST', function (int $me) {
 
 route('me.delete', 'POST', function (int $me) {
     if ((string)arg('confirm', '') !== '탈퇴') fail(400, '확인 칸에 ‘탈퇴’라고 적어 주세요');
+    // 로그인 상태를 누가 훔쳐도 계정을 지울 수 없게, 비밀번호가 있는 계정은 한 번 더 확인해요
+    $hash = val('SELECT password_hash FROM users WHERE id = ?', [$me]);
+    if ($hash && !password_verify((string)arg('password', ''), (string)$hash)) fail(400, '비밀번호가 맞지 않아요');
     $av = val('SELECT avatar FROM users WHERE id = ?', [$me]);
     if (function_exists('journal_delete_user_files')) journal_delete_user_files($me);
     if (function_exists('proof_delete_user_files')) proof_delete_user_files($me);
