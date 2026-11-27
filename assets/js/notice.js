@@ -42,8 +42,10 @@ export function noticeFloat() {
         h('button', { type: 'button', class: 'link', onclick: () => body.classList.toggle('open') }, '펼치기·줄이기'),
         h('a', { class: 'link', href: '#/board' }, '보드에서 보기')));
   }
+  let last = 0;
   async function refresh() {
     if (!state.me) return;
+    last = Date.now();
     const r = await api.get('notice.list');
     const ids = new Set(r.notices.map((n) => n.id));
     // 지금 없는 공지는 '닫음' 목록에서도 정리 → 다시 고정되면 또 떠요
@@ -51,6 +53,8 @@ export function noticeFloat() {
     notices = r.notices; paint();
   }
   refresh().catch(() => {});
-  const stop = every(60000, refresh);
-  return { el, refresh, stop };
+  const stop = every(20000, refresh);
+  // 화면을 옮길 때마다 (3초에 한 번까지) 새 공지를 확인해요
+  const soft = () => { if (Date.now() - last > 3000) refresh().catch(() => {}); };
+  return { el, refresh, soft, stop };
 }

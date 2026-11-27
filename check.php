@@ -37,6 +37,13 @@ if (is_array($cfg)) {
     if (!is_dir($sp)) @mkdir($sp, 0700, true);
     $w = is_dir($sp) && is_writable($sp);
     item('로그인 저장 폴더 쓰기 가능', $w, $w ? '사용 가능' : '폴더(sessions)에 쓸 수 없어요. FTP 프로그램에서 sessions 폴더 권한을 700 또는 755 로 바꿔 주세요');
+    $bad = [];
+    foreach (['avatars', 'journal', 'proofs', 'messages'] as $d) {
+        $p = __DIR__ . '/uploads/' . $d;
+        if (!is_dir($p)) @mkdir($p, 0755, true);
+        if (!is_dir($p) || !is_writable($p)) $bad[] = $d;
+    }
+    item('사진·파일 저장 폴더 쓰기 가능', !$bad, !$bad ? '사용 가능 (uploads/avatars, journal, proofs, messages)' : 'uploads 안의 ' . implode(', ', $bad) . ' 폴더에 쓸 수 없어요. FTP 프로그램에서 uploads 폴더와 그 안의 폴더 권한을 755 (안 되면 707) 로 바꿔 주세요');
 
     $db = $cfg['db'] ?? [];
     try {

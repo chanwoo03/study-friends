@@ -157,7 +157,7 @@ async function render() {
   }
   if (!route.name || route.name === 'login') { history.replaceState(null, '', '#/calendar'); return render(); }
   if (!VIEWS[route.name]) { history.replaceState(null, '', '#/calendar'); return render(); }
-  if (!shell) buildShell();
+  if (!shell) buildShell(); else if (notices) notices.soft();
   paintNav(route.name);
   if (cleanup) { try { cleanup(); } catch (e) {} cleanup = null; }
   const seq = ++mountSeq;

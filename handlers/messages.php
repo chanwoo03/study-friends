@@ -181,12 +181,15 @@ route('messages.file', 'GET', function (int $me) {
     header('Content-Type: ' . ($isImg ? 'image/jpeg' : 'application/octet-stream'));
     header('X-Content-Type-Options: nosniff');
     header('Cache-Control: private, max-age=604800');
-    header("Content-Security-Policy: default-src 'none'; sandbox");
     if (!$isImg || !empty($_GET['dl'])) {
+        /* 내려받기: attachment + octet-stream + nosniff 라 브라우저가 열지 않아요.
+           (sandbox CSP를 붙이면 크롬이 파일 이름을 'download'로 바꿔 버려요) */
         $fn = (string)$m['file_name'];
-        $ascii = preg_replace('/[^A-Za-z0-9._-]/', '_', $fn) ?: 'file';
+        $ascii = preg_replace('/[^A-Za-z0-9._-]+/u', '_', $fn) ?: 'file';
+        header('Content-Type: application/octet-stream');
         header("Content-Disposition: attachment; filename=\"$ascii\"; filename*=UTF-8''" . rawurlencode($fn));
     }
+    else header("Content-Security-Policy: default-src 'none'; sandbox");
     header('Content-Length: ' . filesize($f));
     readfile($f);
     exit;
