@@ -4,6 +4,22 @@ declare(strict_types=1);
 
 /* 앱 전용 공부 스티커 (화면의 STICKERS 와 같은 이름) */
 const STICKERS = ['fighting', 'allnight', 'coffee', 'pass', 'good', 'focus', 'rest', 'wow', 'thanks', 'together', 'sleepy', 'done'];
+
+/* 그림 이모티콘 묶음: assets/stickers/packs.json 에 적힌 것만 보낼 수 있어요. 보낼 때는 '묶음/이름' 으로 보내요 */
+function sticker_ok(string $key): bool {
+    if (in_array($key, STICKERS, true)) return true;
+    if (!preg_match('~^([a-z0-9_-]{1,40})/([a-z0-9_-]{1,60})$~', $key, $m)) return false;
+    static $packs = null;
+    if ($packs === null) {
+        $j = @file_get_contents(dirname(__DIR__) . '/assets/stickers/packs.json');
+        $packs = [];
+        foreach ((json_decode((string)$j, true) ?: []) as $p) {
+            if (!is_array($p) || !isset($p['key'], $p['items']) || !is_array($p['items'])) continue;
+            foreach ($p['items'] as $it) if (is_array($it) && isset($it['key'])) $packs[$p['key'] . '/' . $it['key']] = true;
+        }
+    }
+    return isset($packs[$key]);
+}
 /* 메시지 반응으로 쓸 수 있는 이모지 */
 const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
 
@@ -73,7 +89,7 @@ route('messages.send', 'POST', function (int $me) {
     require_friend($me, $fid);
     $kind = arg('kind', 'text') === 'sticker' ? 'sticker' : 'text';
     $body = str_arg('body', 2000, true, '메시지');
-    if ($kind === 'sticker' && !in_array($body, STICKERS, true)) fail(400, '없는 스티커예요');
+    if ($kind === 'sticker' && !sticker_ok($body)) fail(400, '없는 이모티콘이에요');
     $recent = (int)val('SELECT COUNT(*) FROM messages WHERE sender_id = ? AND created_at > NOW() - INTERVAL 1 MINUTE', [$me]);
     if ($recent >= 60) fail(429, '메시지를 너무 빨리 보내고 있어요. 잠시 후 다시 보내 주세요');
     q('INSERT INTO messages (sender_id, receiver_id, kind, body) VALUES (?, ?, ?, ?)', [$me, $fid, $kind, $body]);
@@ -97,11 +113,14 @@ route('messages.react', 'POST', function (int $me) {
 });
 
 
-/* ===== 사진·파일 보내기 =====
+/* ===== 파일 보내기 (사진·동영상은 보내지 않아요. 예전에 보낸 사진은 그대로 볼 수 있어요) =====
    파일은 uploads/messages 에 아무 의미 없는 이름(.bin)으로 저장하고, 주고받은 두 사람만 messages.file 로 받을 수 있어요 */
 const MSG_FILE_MAX = 20 * 1024 * 1024;   // 20MB (호스팅 업로드 한도가 더 작으면 그 한도까지)
 const MSG_FILE_EXT = ['pdf', 'hwp', 'hwpx', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'txt', 'md', 'zip',
-                      'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'mp3', 'm4a', 'wav', 'mp4', 'mov', 'key', 'pages', 'numbers'];
+                      'mp3', 'm4a', 'wav', 'key', 'pages', 'numbers'];
+/* 막는 사진·동영상 확장자 (안내 문구용) */
+const MSG_MEDIA_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'tif', 'tiff', 'svg', 'avif',
+                       'mp4', 'mov', 'avi', 'mkv', 'webm', 'wmv', 'm4v', '3gp', 'flv'];
 
 function msg_dir(): string { return dirname(__DIR__) . '/uploads/messages'; }
 function ini_bytes(string $v): int {
@@ -128,12 +147,13 @@ function msg_delete_user_files(int $uid): void {
 
 route('messages.limits', 'GET', fn(int $me) => ['maxBytes' => upload_limit(), 'maxLabel' => human_size(upload_limit()), 'ext' => MSG_FILE_EXT]);
 
-/* multipart/form-data: to, kind(image|file), file, (사진이면) thumb */
+/* multipart/form-data: to, file */
 route('messages.upload', 'POST', function (int $me) {
     if (empty($_FILES) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) fail(413, '파일이 너무 커요. ' . human_size(upload_limit()) . ' 이하로 보내 주세요');
     $fid = (int)($_POST['to'] ?? 0);
     require_friend($me, $fid);
-    $kind = ($_POST['kind'] ?? '') === 'image' ? 'image' : 'file';
+    if (($_POST['kind'] ?? 'file') !== 'file') fail(400, '사진·동영상은 보낼 수 없어요. 대신 이모티콘을 써 보세요');
+    $kind = 'file';
     $f = $_FILES['file'] ?? null;
     if (!$f || !is_array($f) || is_array($f['error'])) fail(400, '보낼 파일을 골라 주세요');
     if ($f['error'] === UPLOAD_ERR_INI_SIZE || $f['error'] === UPLOAD_ERR_FORM_SIZE) fail(413, '파일이 너무 커요. ' . human_size(upload_limit()) . ' 이하로 보내 주세요');
@@ -147,25 +167,13 @@ route('messages.upload', 'POST', function (int $me) {
     $dir = msg_dir();
     if (!is_dir($dir) && !@mkdir($dir, 0755, true)) fail(500, '파일을 저장할 폴더를 만들지 못했어요 (uploads 폴더 권한 확인)');
     $base = $me . '_' . bin2hex(random_bytes(10));
-    $thumb = null; $mime = 'application/octet-stream';
-    if ($kind === 'image') {
-        // 사진은 화면에서 JPEG 로 줄여 보내요. 진짜 JPEG 인지 확인해요
-        $info = @getimagesize($f['tmp_name']);
-        if (!$info || ($info['mime'] ?? '') !== 'image/jpeg' || $info[0] > 4096 || $info[1] > 4096) fail(400, '사진을 읽지 못했어요. 다른 사진으로 해 주세요');
-        $mime = 'image/jpeg';
-        $t = $_FILES['thumb'] ?? null;
-        if ($t && !is_array($t['error']) && $t['error'] === UPLOAD_ERR_OK && is_uploaded_file($t['tmp_name']) && $t['size'] <= 400 * 1024) {
-            $ti = @getimagesize($t['tmp_name']);
-            if ($ti && ($ti['mime'] ?? '') === 'image/jpeg') { $thumb = $base . '_t.jpg'; move_uploaded_file($t['tmp_name'], "$dir/$thumb"); }
-        }
-        if (!preg_match('/\.jpe?g$/i', $name)) $name = preg_replace('/\.[^.]*$/', '', $name) . '.jpg';
-    } else {
-        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-        if (!in_array($ext, MSG_FILE_EXT, true)) fail(400, '이 종류의 파일은 보낼 수 없어요 (' . ($ext ?: '확장자 없음') . ')');
-    }
+    $mime = 'application/octet-stream';
+    $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    if (in_array($ext, MSG_MEDIA_EXT, true)) fail(400, '사진·동영상은 보낼 수 없어요. 대신 이모티콘을 써 보세요');
+    if (!in_array($ext, MSG_FILE_EXT, true)) fail(400, '이 종류의 파일은 보낼 수 없어요 (' . ($ext ?: '확장자 없음') . ')');
     if (!move_uploaded_file($f['tmp_name'], "$dir/$base.bin")) fail(500, '파일을 저장하지 못했어요 (uploads 폴더 권한 확인)');
     q('INSERT INTO messages (sender_id, receiver_id, kind, body, file_name, file_path, file_thumb, file_size, file_mime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [$me, $fid, $kind, $kind === 'image' ? '사진' : $name, $name, "$base.bin", $thumb, $size, $mime]);
+      [$me, $fid, $kind, $name, $name, "$base.bin", null, $size, $mime]);
     return ['message' => msg_out(row('SELECT * FROM messages WHERE id = ?', [(int)db()->lastInsertId()]), $me)];
 });
 

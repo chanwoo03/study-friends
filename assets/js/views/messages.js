@@ -1,12 +1,16 @@
 /* 친구와 1:1 메시지. 열려 있는 동안 3초마다 새 메시지를 확인해요 */
 import { state, api, h, icon, avatar, errToast, every, setTitle, hm, ago, mdw, today, app } from '../core.js';
-import { STICKERS, REACTIONS, EMOJIS, sticker, stickerLabel } from '../stickers.js';
-import { toJpeg, loadImage } from '../journal.js';
+import { STICKERS, REACTIONS, EMOJIS, PACKS, packsReady, sticker, stickerLabel } from '../stickers.js';
 import { download, modal, toast } from '../core.js';
 
 const QUICK = ['화이팅!', '지금 공부 중이야', '같이 공부할래?', '수고했어'];
+/* 메시지로는 사진·동영상을 보내지 않아요 (문서·압축·소리 파일만) */
+const MEDIA_EXT = /\.(jpe?g|png|gif|webp|heic|heif|bmp|tiff?|svg|avif|mp4|mov|avi|mkv|webm|wmv|m4v|3gp|flv)$/i;
+const isMedia = (f) => /^(image|video)\//.test(f.type || '') || MEDIA_EXT.test(f.name || '');
+const FILE_ACCEPT = '.pdf,.hwp,.hwpx,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,.zip,.mp3,.m4a,.wav,.key,.pages,.numbers';
 
 export default async function mount(view, route) {
+  await packsReady;
   const withId = route.params[0] ? Number(route.params[0]) : null;
   setTitle('메시지');
   const layout = h('div', { class: 'chat-layout' + (withId ? ' has-chat' : '') });
@@ -50,17 +54,30 @@ export default async function mount(view, route) {
   const drawerEl = h('div', { class: 'drawer', hidden: true });
   const emojiBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '이모지', 'aria-expanded': 'false', onclick: () => toggleDrawer('emoji') }, h('span', { class: 'em-ico', 'aria-hidden': 'true' }, '😊'));
   const stickerBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '스티커', 'aria-expanded': 'false', onclick: () => toggleDrawer('sticker') }, icon('sticky'));
-  /* 사진·파일 보내기: 클립 버튼, 끌어다 놓기, 붙여넣기 */
-  const fileIn = h('input', { type: 'file', multiple: true, hidden: true, onchange: () => { const fs = [...fileIn.files]; fileIn.value = ''; sendFiles(fs); } });
-  const clipBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '사진·파일 보내기', onclick: () => fileIn.click() }, icon('clip'));
+  /* 파일 보내기 (사진·동영상 제외): 클립 버튼, 끌어다 놓기, 붙여넣기 */
+  const fileIn = h('input', { type: 'file', multiple: true, hidden: true, accept: FILE_ACCEPT, onchange: () => { const fs = [...fileIn.files]; fileIn.value = ''; sendFiles(fs); } });
+  const clipBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '파일 보내기 (사진·동영상 제외)', onclick: () => fileIn.click() }, icon('clip'));
+  let stickerTab = 'basic';
   function toggleDrawer(kind) {
     drawer = drawer === kind ? null : kind;
     emojiBtn.setAttribute('aria-expanded', String(drawer === 'emoji'));
     stickerBtn.setAttribute('aria-expanded', String(drawer === 'sticker'));
     drawerEl.hidden = !drawer;
     if (drawer === 'emoji') drawerEl.replaceChildren(h('div', { class: 'emoji-grid' }, EMOJIS.map((e) => h('button', { type: 'button', 'aria-label': e, onclick: () => insertEmoji(e) }, e))));
-    if (drawer === 'sticker') drawerEl.replaceChildren(h('div', { class: 'sticker-grid' }, Object.keys(STICKERS).map((k) =>
-      h('button', { type: 'button', 'aria-label': stickerLabel(k) + ' 보내기', onclick: () => { sendSticker(k); toggleDrawer('sticker'); } }, sticker(k, 'sm')))));
+    if (drawer === 'sticker') paintStickers();
+  }
+  /* 스티커 서랍: 기본 스티커 + 그림 이모티콘 묶음마다 탭 하나 */
+  function paintStickers() {
+    const tabs = [{ key: 'basic', name: '기본' }, ...PACKS];
+    if (!tabs.some((t) => t.key === stickerTab)) stickerTab = 'basic';
+    const keys = stickerTab === 'basic' ? Object.keys(STICKERS) : PACKS.find((p) => p.key === stickerTab).items.map((it) => stickerTab + '/' + it.key);
+    drawerEl.replaceChildren(
+      tabs.length > 1 ? h('div', { class: 'st-tabs', role: 'tablist' }, tabs.map((t) =>
+        h('button', { type: 'button', role: 'tab', class: 'st-tab' + (t.key === stickerTab ? ' on' : ''), 'aria-selected': String(t.key === stickerTab),
+          onclick: () => { stickerTab = t.key; paintStickers(); } },
+          t.key === 'basic' ? '기본' : [t.items[0] ? sticker(t.key + '/' + t.items[0].key, 'tab') : null, h('span', null, t.name)]))) : null,
+      h('div', { class: 'sticker-grid' + (stickerTab === 'basic' ? '' : ' pack') }, keys.map((k) =>
+        h('button', { type: 'button', 'aria-label': stickerLabel(k) + ' 보내기', onclick: () => { sendSticker(k); toggleDrawer('sticker'); } }, sticker(k, 'sm')))));
   }
   function insertEmoji(e) {
     const a = input.selectionStart ?? input.value.length, b = input.selectionEnd ?? input.value.length;
@@ -138,23 +155,15 @@ export default async function mount(view, route) {
   let limits = null;
   async function sendFiles(files) {
     if (!limits) { try { limits = await api.get('messages.limits'); } catch (e) { limits = { maxBytes: 8 * 1048576, maxLabel: '8MB', ext: [] }; } }
-    for (const f of files.slice(0, 10)) {
-      const isImg = /^image\/(jpeg|png|webp|gif|bmp)$/.test(f.type) && f.type !== 'image/gif';
-      const temp = { id: Number.MAX_SAFE_INTEGER - Math.floor(Math.random() * 1e6), mine: true, kind: isImg ? 'image' : 'file', body: f.name, at: today() + ' 00:00:00', pending: true, file: { name: f.name, size: f.size } };
+    const media = files.filter(isMedia);
+    if (media.length) toast('사진·동영상은 보낼 수 없어요. 대신 이모티콘을 써 보세요');
+    for (const f of files.filter((x) => !isMedia(x)).slice(0, 10)) {
+      const temp = { id: Number.MAX_SAFE_INTEGER - Math.floor(Math.random() * 1e6), mine: true, kind: 'file', body: f.name, at: today() + ' 00:00:00', pending: true, file: { name: f.name, size: f.size } };
       try {
+        if (f.size > limits.maxBytes) throw new Error(`파일이 너무 커요. ${limits.maxLabel} 이하로 보내 주세요`);
         const form = new FormData();
         form.append('to', String(withId));
-        if (isImg) {
-          const img = await loadImage(f);
-          const big = toJpeg(img, 1600, 0.84), small = toJpeg(img, 480, 0.8);
-          temp.preview = small;
-          form.append('kind', 'image');
-          form.append('file', await (await fetch(big)).blob(), f.name);
-          form.append('thumb', await (await fetch(small)).blob(), 'thumb.jpg');
-        } else {
-          if (f.size > limits.maxBytes) throw new Error(`파일이 너무 커요. ${limits.maxLabel} 이하로 보내 주세요`);
-          form.append('kind', 'file'); form.append('file', f, f.name);
-        }
+        form.append('kind', 'file'); form.append('file', f, f.name);
         msgs.push(temp); paint(true);
         const r = await api.upload('messages.upload', form, (p) => { temp.progress = `보내는 중 ${Math.round(p * 100)}%`; paint(false); });
         msgs = msgs.filter((m) => m !== temp);

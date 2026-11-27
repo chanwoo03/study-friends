@@ -1,5 +1,5 @@
 /* 화면 위 공지 창: 나와 내 친구들이 보드에서 '공지로 고정'한 글
-   - 어느 화면에서나 위에 떠 있어요. 접으면 작은 '공지' 단추가 되고, 닫은 공지는 새 공지가 올라올 때까지 안 떠요 */
+   - 어느 화면에서나 위에 떠 있어요. 머리줄을 누르면 한 줄로 접히고 다시 누르면 펴져요. 닫은 공지는 새 공지가 올라올 때까지 안 떠요 */
 import { api, h, icon, avatar, ago, every, state } from './core.js';
 
 const KEY_HIDE = 'sf-notice-hidden', KEY_MIN = 'sf-notice-min';
@@ -20,27 +20,23 @@ export function noticeFloat() {
     if (idx >= list.length) idx = 0;
     const n = list[idx];
     el.classList.toggle('min', min);
-    if (min) {
-      el.replaceChildren(h('button', { type: 'button', class: 'nf-pill', onclick: () => { min = false; save(KEY_MIN, false); paint(); } },
-        icon('pin'), `공지 ${list.length}`));
-      return;
-    }
-    const body = h('div', { class: 'nf-body' }, n.body);
+    const toggle = () => { min = !min; save(KEY_MIN, min); paint(); };
+    const firstLine = String(n.body).split('\n').find((x) => x.trim()) || '';
     el.replaceChildren(
       h('div', { class: 'nf-head' },
-        h('span', { class: 'nf-tag' }, icon('pin'), '공지'),
-        avatar(n.author, 'sm'), h('b', null, n.mine ? '나' : n.author.name), h('span', { class: 'tiny muted' }, ago(n.pinnedAt)),
-        h('span', { class: 'grow' }),
-        list.length > 1 ? h('span', { class: 'nf-nav' },
+        // 머리줄을 누르면 접고 펴요
+        h('button', { type: 'button', class: 'nf-toggle', 'aria-expanded': String(!min), 'aria-label': min ? '공지 펴기' : '공지 접기', onclick: toggle },
+          h('span', { class: 'nf-tag' }, icon('pin'), '공지', list.length > 1 ? h('span', { class: 'nf-count' }, String(list.length)) : null),
+          min ? h('span', { class: 'nf-line' }, firstLine)
+              : [avatar(n.author, 'sm'), h('b', null, n.mine ? '나' : n.author.name), h('span', { class: 'tiny muted' }, ago(n.pinnedAt))],
+          h('span', { class: 'nf-chev', 'aria-hidden': 'true' }, icon('next'))),
+        !min && list.length > 1 ? h('span', { class: 'nf-nav' },
           h('button', { type: 'button', class: 'btn ghost icon sm', 'aria-label': '이전 공지', onclick: () => { idx = (idx + list.length - 1) % list.length; paint(); } }, icon('back')),
           h('span', { class: 'tiny muted' }, `${idx + 1}/${list.length}`),
           h('button', { type: 'button', class: 'btn ghost icon sm', 'aria-label': '다음 공지', onclick: () => { idx = (idx + 1) % list.length; paint(); } }, icon('next'))) : null,
-        h('button', { type: 'button', class: 'btn ghost sm', onclick: () => { min = true; save(KEY_MIN, true); paint(); } }, '접기'),
         h('button', { type: 'button', class: 'btn ghost icon sm', 'aria-label': '이 공지 닫기', onclick: () => { hidden.add(n.id); save(KEY_HIDE, [...hidden].slice(-50)); paint(); } }, icon('x'))),
-      body,
-      h('div', { class: 'nf-foot' },
-        h('button', { type: 'button', class: 'link', onclick: () => body.classList.toggle('open') }, '펼치기·줄이기'),
-        h('a', { class: 'link', href: '#/board' }, '보드에서 보기')));
+      min ? null : h('div', { class: 'nf-body' }, n.body),
+      min ? null : h('div', { class: 'nf-foot' }, h('a', { class: 'link', href: '#/board' }, '보드에서 보기')));
   }
   let last = 0;
   async function refresh() {

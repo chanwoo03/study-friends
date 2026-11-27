@@ -1,0 +1,68 @@
+[
+ {
+  "key": "calbuddy",
+  "name": "캘린더 친구",
+  "items": [
+   {
+    "key": "start",
+    "t": "공부 시작!",
+    "file": "start.webp"
+   },
+   {
+    "key": "focus",
+    "t": "집중 중",
+    "file": "focus.webp"
+   },
+   {
+    "key": "break",
+    "t": "잠깐 휴식",
+    "file": "break.webp"
+   },
+   {
+    "key": "schedule",
+    "t": "일정 확인!",
+    "file": "schedule.webp"
+   },
+   {
+    "key": "remember",
+    "t": "잊지 마!",
+    "file": "remember.webp"
+   },
+   {
+    "key": "time",
+    "t": "시간 됐어!",
+    "file": "time.webp"
+   },
+   {
+    "key": "together",
+    "t": "같이 하자",
+    "file": "together.webp"
+   },
+   {
+    "key": "cando",
+    "t": "할 수 있어!",
+    "file": "cando.webp"
+   },
+   {
+    "key": "late",
+    "t": "미안 늦었어",
+    "file": "late.webp"
+   },
+   {
+    "key": "done",
+    "t": "오늘도 완료!",
+    "file": "done.webp"
+   },
+   {
+    "key": "goodjob",
+    "t": "수고했어",
+    "file": "goodjob.webp"
+   },
+   {
+    "key": "tomorrow",
+    "t": "내일 또 보자",
+    "file": "tomorrow.webp"
+   }
+  ]
+ }
+]

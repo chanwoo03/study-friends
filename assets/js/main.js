@@ -98,8 +98,10 @@ function authScreen(query) {
 /* ===== 메뉴가 있는 화면 ===== */
 let shell = null, cleanup = null, mountSeq = 0, notices = null;
 function buildShell() {
-  const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'));
-  for (const [k, label, ic] of NAV) side.append(h('a', { class: 'nav-a', href: '#/' + k, 'data-k': k }, icon(ic), label, h('span', { class: 'badge-n', hidden: true })));
+  // 메뉴 접기: 컴퓨터는 왼쪽 메뉴가 아이콘만 남고, 휴대폰은 아래 메뉴가 작은 단추가 돼요 (기기마다 기억)
+  const sideToggle = h('button', { class: 'btn ghost icon sm side-toggle', type: 'button', onclick: () => setNavMin(!navMin('side'), 'side') }, icon('sidebar'));
+  const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('span', { class: 'nl' }, '공부 친구'), sideToggle));
+  for (const [k, label, ic] of NAV) side.append(h('a', { class: 'nav-a', href: '#/' + k, 'data-k': k, title: label }, icon(ic), h('span', { class: 'nl' }, label), h('span', { class: 'badge-n', hidden: true })));
   side.append(h('div', { class: 'spacer' }));
   const meChip = h('a', { class: 'me-chip', href: '#/settings' });
   side.append(meChip);
@@ -110,17 +112,29 @@ function buildShell() {
   const tabs = h('nav', { class: 'tabbar', 'aria-label': '메뉴' });
   const tabLabel = { calendar: ['캘린더', 'calendar'], study: ['공부', 'study'], messages: ['메시지', 'chat'], board: ['보드', 'board'], more: ['더보기', 'more'] };
   for (const k of TABS) tabs.append(h('a', { class: 'tab', href: '#/' + k, 'data-k': k }, icon(tabLabel[k][1]), tabLabel[k][0], h('span', { class: 'badge-n', hidden: true })));
+  tabs.append(h('button', { class: 'tab tab-fold', type: 'button', 'aria-label': '아래 메뉴 접기', onclick: () => setNavMin(true, 'tab') }, icon('down'), '접기'));
+  const tabOpen = h('button', { class: 'tab-open', type: 'button', 'data-k': 'messages', 'aria-label': '아래 메뉴 펴기', onclick: () => setNavMin(false, 'tab') }, icon('menu'), h('span', { class: 'badge-n', hidden: true }));
   const view = h('div', { class: 'page', id: 'view' });
   if (notices) notices.stop();
   notices = noticeFloat();
   const main = h('main', { class: 'main' }, top, notices.el, view);
-  root.replaceChildren(h('div', { class: 'shell' }, side, main, tabs));
-  shell = { side, tabs, view, meChip, themeBtn, topMe };
+  root.replaceChildren(h('div', { class: 'shell' }, side, main, tabs, tabOpen));
+  shell = { side, tabs, view, meChip, themeBtn, topMe, sideToggle };
+  paintNavMin();
   paintMe(); paintTheme(); paintBadges();
+}
+const NAV_KEY = { side: 'sf-side-min', tab: 'sf-tab-min' };
+function navMin(which) { try { return localStorage.getItem(NAV_KEY[which]) === '1'; } catch (e) { return false; } }
+function setNavMin(on, which) { try { localStorage.setItem(NAV_KEY[which], on ? '1' : '0'); } catch (e) {} paintNavMin(); }
+function paintNavMin() {
+  const side = navMin('side'), tab = navMin('tab');
+  document.documentElement.classList.toggle('side-min', side);
+  document.documentElement.classList.toggle('tab-min', tab);
+  if (shell) { shell.sideToggle.setAttribute('aria-label', side ? '왼쪽 메뉴 펴기' : '왼쪽 메뉴 접기'); shell.sideToggle.setAttribute('aria-expanded', String(!side)); }
 }
 export function paintMe() {
   if (!shell || !state.me) return;
-  shell.meChip.replaceChildren(avatar(state.me), h('span', { class: 'grow', style: { overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' } }, state.me.name), icon('gear'));
+  shell.meChip.replaceChildren(avatar(state.me), h('span', { class: 'grow nl', style: { overflow: 'hidden', 'text-overflow': 'ellipsis', 'white-space': 'nowrap' } }, state.me.name), icon('gear'));
   shell.topMe.replaceChildren(avatar(state.me));
 }
 function paintNav(name) {
