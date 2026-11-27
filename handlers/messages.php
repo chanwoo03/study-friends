@@ -8,8 +8,12 @@ const STICKERS = ['fighting', 'allnight', 'coffee', 'pass', 'good', 'focus', 're
 const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
 
 function msg_out(array $m, int $me): array {
-    return ['id' => (int)$m['id'], 'from' => (int)$m['sender_id'], 'mine' => (int)$m['sender_id'] === $me,
-            'kind' => $m['kind'] ?? 'text', 'body' => $m['body'], 'at' => $m['created_at'], 'read' => $m['read_at'] !== null];
+    $o = ['id' => (int)$m['id'], 'from' => (int)$m['sender_id'], 'mine' => (int)$m['sender_id'] === $me,
+          'kind' => $m['kind'] ?? 'text', 'body' => $m['body'], 'at' => $m['created_at'], 'read' => $m['read_at'] !== null];
+    if (in_array($o['kind'], ['image', 'file'], true)) {
+        $o['file'] = ['name' => (string)$m['file_name'], 'size' => (int)$m['file_size'], 'mime' => (string)$m['file_mime'], 'gone' => !$m['file_path']];
+    }
+    return $o;
 }
 /* 대화에서 최근 메시지들의 반응 {메시지id: [{u: 사람id, e: 이모지}]} */
 function thread_reactions(int $me, int $fid): array {
@@ -90,4 +94,100 @@ route('messages.react', 'POST', function (int $me) {
         q('INSERT INTO message_reactions (message_id, user_id, emoji) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE emoji = VALUES(emoji), created_at = NOW()', [$m['id'], $me, $e]);
     }
     return ['reactions' => (object)thread_reactions($me, $other)];
+});
+
+
+/* ===== 사진·파일 보내기 =====
+   파일은 uploads/messages 에 아무 의미 없는 이름(.bin)으로 저장하고, 주고받은 두 사람만 messages.file 로 받을 수 있어요 */
+const MSG_FILE_MAX = 20 * 1024 * 1024;   // 20MB (호스팅 업로드 한도가 더 작으면 그 한도까지)
+const MSG_FILE_EXT = ['pdf', 'hwp', 'hwpx', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'txt', 'md', 'zip',
+                      'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'mp3', 'm4a', 'wav', 'mp4', 'mov', 'key', 'pages', 'numbers'];
+
+function msg_dir(): string { return dirname(__DIR__) . '/uploads/messages'; }
+function ini_bytes(string $v): int {
+    $v = trim($v); if ($v === '') return 0;
+    $n = (int)$v; $u = strtolower(substr($v, -1));
+    return $u === 'g' ? $n * 1073741824 : ($u === 'm' ? $n * 1048576 : ($u === 'k' ? $n * 1024 : $n));
+}
+function upload_limit(): int {
+    $l = MSG_FILE_MAX;
+    foreach (['upload_max_filesize', 'post_max_size'] as $k) { $b = ini_bytes((string)ini_get($k)); if ($b > 0) $l = min($l, $b); }
+    return $l;
+}
+function human_size(int $b): string { return $b >= 1048576 ? round($b / 1048576, 1) . 'MB' : max(1, (int)round($b / 1024)) . 'KB'; }
+function msg_delete_files(array $m): void {
+    foreach (['file_path', 'file_thumb'] as $k) {
+        $n = basename((string)($m[$k] ?? ''));
+        if ($n !== '' && preg_match('/^[A-Za-z0-9_]+\.(bin|jpg)$/', $n) && is_file(msg_dir() . '/' . $n)) @unlink(msg_dir() . '/' . $n);
+    }
+}
+/* 회원 탈퇴: 그 사람이 주고받은 메시지 파일도 지워요 (메시지 줄은 DB 가 같이 지워요) */
+function msg_delete_user_files(int $uid): void {
+    foreach (rows('SELECT file_path, file_thumb FROM messages WHERE (sender_id = ? OR receiver_id = ?) AND file_path IS NOT NULL', [$uid, $uid]) as $m) msg_delete_files($m);
+}
+
+route('messages.limits', 'GET', fn(int $me) => ['maxBytes' => upload_limit(), 'maxLabel' => human_size(upload_limit()), 'ext' => MSG_FILE_EXT]);
+
+/* multipart/form-data: to, kind(image|file), file, (사진이면) thumb */
+route('messages.upload', 'POST', function (int $me) {
+    if (empty($_FILES) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) fail(413, '파일이 너무 커요. ' . human_size(upload_limit()) . ' 이하로 보내 주세요');
+    $fid = (int)($_POST['to'] ?? 0);
+    require_friend($me, $fid);
+    $kind = ($_POST['kind'] ?? '') === 'image' ? 'image' : 'file';
+    $f = $_FILES['file'] ?? null;
+    if (!$f || !is_array($f) || is_array($f['error'])) fail(400, '보낼 파일을 골라 주세요');
+    if ($f['error'] === UPLOAD_ERR_INI_SIZE || $f['error'] === UPLOAD_ERR_FORM_SIZE) fail(413, '파일이 너무 커요. ' . human_size(upload_limit()) . ' 이하로 보내 주세요');
+    if ($f['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($f['tmp_name'])) fail(400, '파일을 받지 못했어요. 다시 보내 주세요');
+    $size = (int)$f['size'];
+    if ($size <= 0) fail(400, '빈 파일은 보낼 수 없어요');
+    if ($size > MSG_FILE_MAX) fail(413, '파일은 ' . human_size(MSG_FILE_MAX) . '까지 보낼 수 있어요');
+    $name = mb_substr(trim(str_replace(["\0", '/', '\\'], '', (string)$f['name'])), 0, 200) ?: 'file';
+    $recent = (int)val("SELECT COUNT(*) FROM messages WHERE sender_id = ? AND kind IN ('image','file') AND created_at > NOW() - INTERVAL 1 MINUTE", [$me]);
+    if ($recent >= 20) fail(429, '파일을 너무 빨리 보내고 있어요. 잠시 후 다시 보내 주세요');
+    $dir = msg_dir();
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) fail(500, '파일을 저장할 폴더를 만들지 못했어요 (uploads 폴더 권한 확인)');
+    $base = $me . '_' . bin2hex(random_bytes(10));
+    $thumb = null; $mime = 'application/octet-stream';
+    if ($kind === 'image') {
+        // 사진은 화면에서 JPEG 로 줄여 보내요. 진짜 JPEG 인지 확인해요
+        $info = @getimagesize($f['tmp_name']);
+        if (!$info || ($info['mime'] ?? '') !== 'image/jpeg' || $info[0] > 4096 || $info[1] > 4096) fail(400, '사진을 읽지 못했어요. 다른 사진으로 해 주세요');
+        $mime = 'image/jpeg';
+        $t = $_FILES['thumb'] ?? null;
+        if ($t && !is_array($t['error']) && $t['error'] === UPLOAD_ERR_OK && is_uploaded_file($t['tmp_name']) && $t['size'] <= 400 * 1024) {
+            $ti = @getimagesize($t['tmp_name']);
+            if ($ti && ($ti['mime'] ?? '') === 'image/jpeg') { $thumb = $base . '_t.jpg'; move_uploaded_file($t['tmp_name'], "$dir/$thumb"); }
+        }
+        if (!preg_match('/\.jpe?g$/i', $name)) $name = preg_replace('/\.[^.]*$/', '', $name) . '.jpg';
+    } else {
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        if (!in_array($ext, MSG_FILE_EXT, true)) fail(400, '이 종류의 파일은 보낼 수 없어요 (' . ($ext ?: '확장자 없음') . ')');
+    }
+    if (!move_uploaded_file($f['tmp_name'], "$dir/$base.bin")) fail(500, '파일을 저장하지 못했어요 (uploads 폴더 권한 확인)');
+    q('INSERT INTO messages (sender_id, receiver_id, kind, body, file_name, file_path, file_thumb, file_size, file_mime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [$me, $fid, $kind, $kind === 'image' ? '사진' : $name, $name, "$base.bin", $thumb, $size, $mime]);
+    return ['message' => msg_out(row('SELECT * FROM messages WHERE id = ?', [(int)db()->lastInsertId()]), $me)];
+});
+
+/* 받기: 주고받은 두 사람만. thumb=1 작은 사진, dl=1 내려받기 */
+route('messages.file', 'GET', function (int $me) {
+    $m = row('SELECT * FROM messages WHERE id = ?', [int_arg('id')]);
+    if (!$m || !in_array($m['kind'], ['image', 'file'], true) || ((int)$m['sender_id'] !== $me && (int)$m['receiver_id'] !== $me)) fail(404, '파일을 찾을 수 없어요');
+    $useThumb = !empty($_GET['thumb']) && $m['file_thumb'];
+    $n = basename((string)($useThumb ? $m['file_thumb'] : $m['file_path']));
+    $f = msg_dir() . '/' . $n;
+    if ($n === '' || !preg_match('/^[A-Za-z0-9_]+\.(bin|jpg)$/', $n) || !is_file($f)) fail(404, '파일이 없어요');
+    $isImg = $m['kind'] === 'image';
+    header('Content-Type: ' . ($isImg ? 'image/jpeg' : 'application/octet-stream'));
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, max-age=604800');
+    header("Content-Security-Policy: default-src 'none'; sandbox");
+    if (!$isImg || !empty($_GET['dl'])) {
+        $fn = (string)$m['file_name'];
+        $ascii = preg_replace('/[^A-Za-z0-9._-]/', '_', $fn) ?: 'file';
+        header("Content-Disposition: attachment; filename=\"$ascii\"; filename*=UTF-8''" . rawurlencode($fn));
+    }
+    header('Content-Length: ' . filesize($f));
+    readfile($f);
+    exit;
 });

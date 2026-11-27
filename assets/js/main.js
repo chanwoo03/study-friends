@@ -1,5 +1,6 @@
 /* 앱 시작, 로그인 화면, 메뉴, 화면 전환 */
 import { state, api, h, icon, toast, setUnauthorizedHandler, every, setTitle, avatar, app, setServerNow } from './core.js';
+import { noticeFloat } from './notice.js';
 
 const root = document.getElementById('root');
 const NAV = [
@@ -95,7 +96,7 @@ function authScreen(query) {
 }
 
 /* ===== 메뉴가 있는 화면 ===== */
-let shell = null, cleanup = null, mountSeq = 0;
+let shell = null, cleanup = null, mountSeq = 0, notices = null;
 function buildShell() {
   const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'));
   for (const [k, label, ic] of NAV) side.append(h('a', { class: 'nav-a', href: '#/' + k, 'data-k': k }, icon(ic), label, h('span', { class: 'badge-n', hidden: true })));
@@ -110,7 +111,9 @@ function buildShell() {
   const tabLabel = { calendar: ['캘린더', 'calendar'], study: ['공부', 'study'], messages: ['메시지', 'chat'], board: ['보드', 'board'], more: ['더보기', 'more'] };
   for (const k of TABS) tabs.append(h('a', { class: 'tab', href: '#/' + k, 'data-k': k }, icon(tabLabel[k][1]), tabLabel[k][0], h('span', { class: 'badge-n', hidden: true })));
   const view = h('div', { class: 'page', id: 'view' });
-  const main = h('main', { class: 'main' }, top, view);
+  if (notices) notices.stop();
+  notices = noticeFloat();
+  const main = h('main', { class: 'main' }, top, notices.el, view);
   root.replaceChildren(h('div', { class: 'shell' }, side, main, tabs));
   shell = { side, tabs, view, meChip, themeBtn, topMe };
   paintMe(); paintTheme(); paintBadges();
@@ -209,7 +212,7 @@ async function boot() {
   every(20000, syncBadge);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncBadge().catch(() => {}); });
 }
-Object.assign(app, { go, logout, paintMe, paintBadges, toggleTheme, render });
+Object.assign(app, { go, logout, paintMe, paintBadges, toggleTheme, render, refreshNotices: () => notices && notices.refresh() });
 boot();
 
 /* 앱으로 설치 (홈 화면에 추가) */

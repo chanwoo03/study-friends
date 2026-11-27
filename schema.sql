@@ -172,8 +172,13 @@ CREATE TABLE IF NOT EXISTS messages (
   id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   sender_id   INT UNSIGNED NOT NULL,
   receiver_id INT UNSIGNED NOT NULL,
-  kind        ENUM('text','sticker') NOT NULL DEFAULT 'text',
+  kind        ENUM('text','sticker','image','file') NOT NULL DEFAULT 'text',
   body        TEXT         NOT NULL,
+  file_name   VARCHAR(200) NULL,           -- 사진·파일 메시지: 원래 파일 이름
+  file_path   VARCHAR(80)  NULL,           -- uploads/messages 안의 저장 이름 (직접 열 수 없음)
+  file_thumb  VARCHAR(80)  NULL,
+  file_size   INT UNSIGNED NULL,
+  file_mime   VARCHAR(100) NULL,
   created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   read_at     DATETIME     NULL,
   KEY idx_pair (sender_id, receiver_id, id),
@@ -199,7 +204,9 @@ CREATE TABLE IF NOT EXISTS posts (
   author_id  INT UNSIGNED NOT NULL,
   body       TEXT         NOT NULL,
   created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  pinned_at  DATETIME     NULL,            -- 공지로 고정한 시각 (친구들 화면 위 공지 창)
   KEY idx_author (author_id, id),
+  KEY idx_pinned (pinned_at),
   CONSTRAINT fk_post_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

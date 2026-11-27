@@ -121,6 +121,7 @@ route('me.delete', 'POST', function (int $me) {
     $av = val('SELECT avatar FROM users WHERE id = ?', [$me]);
     if (function_exists('journal_delete_user_files')) journal_delete_user_files($me);
     if (function_exists('proof_delete_user_files')) proof_delete_user_files($me);
+    if (function_exists('msg_delete_user_files')) msg_delete_user_files($me);
     q('DELETE FROM users WHERE id = ?', [$me]);
     if (function_exists('remove_avatar_file')) remove_avatar_file($av);
     $_SESSION = [];

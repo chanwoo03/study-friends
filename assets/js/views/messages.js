@@ -1,6 +1,8 @@
 /* 친구와 1:1 메시지. 열려 있는 동안 3초마다 새 메시지를 확인해요 */
 import { state, api, h, icon, avatar, errToast, every, setTitle, hm, ago, mdw, today, app } from '../core.js';
 import { STICKERS, REACTIONS, EMOJIS, sticker, stickerLabel } from '../stickers.js';
+import { toJpeg, loadImage } from '../journal.js';
+import { download, modal, toast } from '../core.js';
 
 const QUICK = ['화이팅!', '지금 공부 중이야', '같이 공부할래?', '수고했어'];
 
@@ -26,7 +28,7 @@ export default async function mount(view, route) {
       threadsEl.append(h('a', { class: 'thread' + (t.friend.id === withId ? ' on' : ''), href: '#/messages/' + t.friend.id },
         avatar(t.friend),
         h('div', { style: { 'min-width': '0' } }, h('div', { class: 't' }, t.friend.name),
-          h('div', { class: 's' }, t.last ? (t.last.mine ? '나: ' : '') + (t.last.kind === 'sticker' ? stickerLabel(t.last.body) : t.last.body) : '아직 대화가 없어요')),
+          h('div', { class: 's' }, t.last ? (t.last.mine ? '나: ' : '') + (t.last.kind === 'sticker' ? stickerLabel(t.last.body) : t.last.kind === 'image' ? '사진' : t.last.kind === 'file' ? '파일: ' + t.last.body : t.last.body) : '아직 대화가 없어요')),
         h('div', { style: { display: 'grid', 'justify-items': 'end', gap: '4px' } },
           t.last ? h('span', { class: 'tiny muted' }, ago(t.last.at)) : null,
           t.unread && t.friend.id !== withId ? h('span', { class: 'badge-n', style: { margin: 0 } }, t.unread) : null)));
@@ -48,6 +50,9 @@ export default async function mount(view, route) {
   const drawerEl = h('div', { class: 'drawer', hidden: true });
   const emojiBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '이모지', 'aria-expanded': 'false', onclick: () => toggleDrawer('emoji') }, h('span', { class: 'em-ico', 'aria-hidden': 'true' }, '😊'));
   const stickerBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '스티커', 'aria-expanded': 'false', onclick: () => toggleDrawer('sticker') }, icon('sticky'));
+  /* 사진·파일 보내기: 클립 버튼, 끌어다 놓기, 붙여넣기 */
+  const fileIn = h('input', { type: 'file', multiple: true, hidden: true, onchange: () => { const fs = [...fileIn.files]; fileIn.value = ''; sendFiles(fs); } });
+  const clipBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '사진·파일 보내기', onclick: () => fileIn.click() }, icon('clip'));
   function toggleDrawer(kind) {
     drawer = drawer === kind ? null : kind;
     emojiBtn.setAttribute('aria-expanded', String(drawer === 'emoji'));
@@ -70,7 +75,11 @@ export default async function mount(view, route) {
     msgsEl,
     h('div', { class: 'quick' }, QUICK.map((q) => h('button', { type: 'button', onclick: () => send(q) }, q))),
     drawerEl,
-    h('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); send(input.value); } }, emojiBtn, stickerBtn, input, sendBtn));
+    h('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); send(input.value); } }, clipBtn, emojiBtn, stickerBtn, input, sendBtn, fileIn));
+  chatPane.addEventListener('dragover', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); chatPane.classList.add('drop'); } });
+  chatPane.addEventListener('dragleave', (e) => { if (e.target === chatPane) chatPane.classList.remove('drop'); });
+  chatPane.addEventListener('drop', (e) => { chatPane.classList.remove('drop'); if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); sendFiles([...e.dataTransfer.files]); } });
+  input.addEventListener('paste', (e) => { const fs = [...(e.clipboardData ? e.clipboardData.files : [])]; if (fs.length) { e.preventDefault(); sendFiles(fs); } });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); send(input.value); }
   });
@@ -89,7 +98,8 @@ export default async function mount(view, route) {
     for (const m of msgs) {
       const day = m.at.slice(0, 10);
       if (day !== lastDay) { msgsEl.append(h('div', { class: 'day-sep' }, mdw(day))); lastDay = day; }
-      const body = m.kind === 'sticker' ? h('div', { class: 'b sticker-b' }, sticker(m.body)) : h('div', { class: 'b' }, m.body);
+      const body = m.kind === 'sticker' ? h('div', { class: 'b sticker-b' }, sticker(m.body))
+        : m.kind === 'image' ? imageBubble(m) : m.kind === 'file' ? fileBubble(m) : h('div', { class: 'b' }, m.body);
       const rs = reactions[m.id] || [];
       const chips = rs.length ? h('div', { class: 'reacts' }, groupReactions(rs).map(([e, n, mine]) =>
         h('button', { type: 'button', class: 'react-chip' + (mine ? ' mine' : ''), 'aria-label': `${e} ${n}명${mine ? ', 내 반응 취소' : ''}`, onclick: () => react(m, e) }, e, n > 1 ? h('span', null, n) : null))) : null;
@@ -104,6 +114,55 @@ export default async function mount(view, route) {
     }
     if (keep) msgsEl.scrollTop = msgsEl.scrollHeight;
     else msgsEl.scrollTop = prevTop;
+  }
+  const fileUrl = (m, q = '') => 'api.php?a=messages.file&id=' + m.id + q;
+  const sizeLabel = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(b / 1024)) + 'KB';
+  function imageBubble(m) {
+    if (m.pending) return h('div', { class: 'b img-b pending' }, m.preview ? h('img', { src: m.preview, alt: '' }) : null, h('span', { class: 'prog' }, m.progress || '보내는 중'));
+    return h('button', { type: 'button', class: 'b img-b', 'aria-label': '사진 크게 보기', onclick: () => photoView(m) }, h('img', { src: fileUrl(m, '&thumb=1'), alt: '보낸 사진', loading: 'lazy' }));
+  }
+  function photoView(m) {
+    const md = modal([h('div', { class: 'lb' }, h('img', { class: 'lb-img', src: fileUrl(m), alt: '' })),
+      h('div', { class: 'actions' },
+        h('button', { class: 'btn', type: 'button', onclick: () => download(fileUrl(m, '&dl=1'), m.file.name).catch(errToast) }, icon('download'), '저장'),
+        h('button', { class: 'btn primary', type: 'button', onclick: () => md.close() }, '닫기'))], { wide: true });
+  }
+  function fileBubble(m) {
+    const f = m.file || { name: m.body, size: 0 };
+    const ext = (f.name.split('.').pop() || '').slice(0, 4).toUpperCase();
+    return h('div', { class: 'b file-b' + (m.pending ? ' pending' : '') },
+      h('span', { class: 'file-ico' }, icon('file'), h('i', null, ext)),
+      h('span', { class: 'file-meta' }, h('b', null, f.name), h('small', null, m.pending ? (m.progress || '보내는 중') : sizeLabel(f.size))),
+      m.pending ? null : h('button', { type: 'button', class: 'btn sm', 'aria-label': f.name + ' 받기', onclick: () => download(fileUrl(m, '&dl=1'), f.name).catch(errToast) }, icon('download'), '받기'));
+  }
+  let limits = null;
+  async function sendFiles(files) {
+    if (!limits) { try { limits = await api.get('messages.limits'); } catch (e) { limits = { maxBytes: 8 * 1048576, maxLabel: '8MB', ext: [] }; } }
+    for (const f of files.slice(0, 10)) {
+      const isImg = /^image\/(jpeg|png|webp|gif|bmp)$/.test(f.type) && f.type !== 'image/gif';
+      const temp = { id: Number.MAX_SAFE_INTEGER - Math.floor(Math.random() * 1e6), mine: true, kind: isImg ? 'image' : 'file', body: f.name, at: today() + ' 00:00:00', pending: true, file: { name: f.name, size: f.size } };
+      try {
+        const form = new FormData();
+        form.append('to', String(withId));
+        if (isImg) {
+          const img = await loadImage(f);
+          const big = toJpeg(img, 1600, 0.84), small = toJpeg(img, 480, 0.8);
+          temp.preview = small;
+          form.append('kind', 'image');
+          form.append('file', await (await fetch(big)).blob(), f.name);
+          form.append('thumb', await (await fetch(small)).blob(), 'thumb.jpg');
+        } else {
+          if (f.size > limits.maxBytes) throw new Error(`파일이 너무 커요. ${limits.maxLabel} 이하로 보내 주세요`);
+          form.append('kind', 'file'); form.append('file', f, f.name);
+        }
+        msgs.push(temp); paint(true);
+        const r = await api.upload('messages.upload', form, (p) => { temp.progress = `보내는 중 ${Math.round(p * 100)}%`; paint(false); });
+        msgs = msgs.filter((m) => m !== temp);
+        if (!msgs.some((x) => x.id === r.message.id)) msgs.push(r.message);
+        msgs.sort((a, b) => a.id - b.id); paint(true);
+      } catch (e) { msgs = msgs.filter((m) => m !== temp); paint(false); errToast(e); }
+    }
+    loadThreads().catch(() => {});
   }
   function groupReactions(rs) {
     const map = new Map();

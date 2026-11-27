@@ -5,7 +5,7 @@ export const photoUrl = (id, full) => 'api.php?a=journal.photo&id=' + id + (full
 const TILT = [-2.2, 1.6, -0.8, 2.4];   // 사진마다 살짝 다르게 기울여요
 
 /* 사진 파일 → 긴 변 max px 이하 JPEG data URL (비율 유지) */
-function toJpeg(img, max, quality) {
+export function toJpeg(img, max, quality) {
   const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(img.naturalWidth * r)); c.height = Math.max(1, Math.round(img.naturalHeight * r));
@@ -14,7 +14,7 @@ function toJpeg(img, max, quality) {
   x.drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', quality);
 }
-function loadImage(file) {
+export function loadImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file), img = new Image();
     img.onload = () => { URL.revokeObjectURL(url); resolve(img); };

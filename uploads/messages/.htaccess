@@ -1,0 +1,8 @@
+# 메시지로 보낸 사진·파일은 바깥에서 직접 열 수 없어요 (api.php 가 볼 권한을 확인한 뒤 보내 줘요)
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>

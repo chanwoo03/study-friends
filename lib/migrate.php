@@ -4,7 +4,7 @@ declare(strict_types=1);
    이미 설치한 사이트도 새 기능에 필요한 표·칸이 저절로 추가돼요. 기존 데이터는 건드리지 않아요.
    새 버전에서 표 구조가 바뀌면 SCHEMA_VERSION 을 올리고 아래 sf_migrations() 에 단계를 덧붙여요. */
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 function sf_col_exists(PDO $db, string $table, string $col): bool {
     $st = $db->prepare('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
@@ -111,6 +111,22 @@ function sf_migrate(PDO $db): array {
             CONSTRAINT fk_mr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         $done[] = 'message_reactions';
+    }
+    // v5: 메시지로 사진·파일 보내기
+    $kindType = (string)$db->query("SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'messages' AND COLUMN_NAME = 'kind'")->fetchColumn();
+    if ($kindType !== '' && strpos($kindType, "'file'") === false) {
+        $db->exec("ALTER TABLE messages MODIFY COLUMN kind ENUM('text','sticker','image','file') NOT NULL DEFAULT 'text'");
+        $done[] = 'messages.kind(image,file)';
+    }
+    if (!sf_col_exists($db, 'messages', 'file_path')) {
+        $db->exec("ALTER TABLE messages ADD COLUMN file_name VARCHAR(200) NULL, ADD COLUMN file_path VARCHAR(80) NULL, ADD COLUMN file_thumb VARCHAR(80) NULL,
+                   ADD COLUMN file_size INT UNSIGNED NULL, ADD COLUMN file_mime VARCHAR(100) NULL");
+        $done[] = 'messages.file';
+    }
+    // v5: 보드 글 공지로 고정
+    if (!sf_col_exists($db, 'posts', 'pinned_at')) {
+        $db->exec("ALTER TABLE posts ADD COLUMN pinned_at DATETIME NULL, ADD KEY idx_pinned (pinned_at)");
+        $done[] = 'posts.pinned_at';
     }
     return $done;
 }

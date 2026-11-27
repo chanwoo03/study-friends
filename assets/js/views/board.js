@@ -1,5 +1,5 @@
 /* 보드판: 나와 친구들이 같이 보는 글과 댓글 */
-import { state, api, h, icon, avatar, toast, errToast, confirmBtn, every, setTitle, pageHead, ago } from '../core.js';
+import { state, api, h, icon, avatar, toast, errToast, confirmBtn, every, setTitle, pageHead, ago, app } from '../core.js';
 
 export default async function mount(view) {
   setTitle('보드');
@@ -9,7 +9,7 @@ export default async function mount(view) {
   const feed = h('div', { class: 'feed' });
   const moreBtn = h('button', { class: 'btn', type: 'button', hidden: true, onclick: loadMore }, '이전 글 더 보기');
   view.append(
-    pageHead('보드', '글은 나와 내 친구들에게만 보여요'),
+    pageHead('보드', '글은 나와 내 친구들에게만 보여요. 중요한 글은 \'공지로 고정\'하면 친구들 화면 위에 떠요'),
     h('div', { class: 'feed' },
       h('form', { class: 'card', onsubmit: async (e) => {
         e.preventDefault(); if (!ta.value.trim()) return; postBtn.disabled = true;
@@ -32,7 +32,11 @@ export default async function mount(view) {
     } }, cin, h('button', { class: 'btn sm', type: 'submit' }, '등록')));
     return h('article', { class: 'card', 'data-id': p.id },
       h('div', { class: 'post-head' }, avatar(p.author), h('div', { class: 'grow' }, h('b', null, p.author.name), h('div', { class: 'tiny muted' }, ago(p.at))),
-        p.mine ? confirmBtn('삭제', '한 번 더 누르면 삭제', async () => { try { await api.post('board.delete', { id: p.id }); toast('지웠어요'); await refresh(true); } catch (e) { errToast(e); } }, 'btn ghost sm') : null),
+        p.pinnedAt ? h('span', { class: 'pill accent' }, icon('pin'), '공지') : null,
+        p.mine ? h('button', { class: 'btn ghost sm', type: 'button', onclick: async () => {
+          try { const r = await api.post('board.pin', { id: p.id, on: !p.pinnedAt }); toast(r.pinned ? '공지로 고정했어요. 친구들 화면 위에 떠요' : '공지 고정을 풀었어요'); await refresh(true); app.refreshNotices && app.refreshNotices(); } catch (e) { errToast(e); }
+        } }, icon('pin'), p.pinnedAt ? '고정 풀기' : '공지로 고정') : null,
+        p.mine ? confirmBtn('삭제', '한 번 더 누르면 삭제', async () => { try { await api.post('board.delete', { id: p.id }); toast('지웠어요'); await refresh(true); app.refreshNotices && app.refreshNotices(); } catch (e) { errToast(e); } }, 'btn ghost sm') : null),
       h('div', { class: 'post-body' }, p.body), comments);
   }
   function paint() {

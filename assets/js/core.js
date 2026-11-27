@@ -43,7 +43,34 @@ async function call(action, { method = 'GET', params, body, retried } = {}) {
 export const api = {
   get: (a, params) => call(a, { params }),
   post: (a, body) => call(a, { method: 'POST', body }),
+  /* 파일 올리기 (multipart). onProgress(0~1) 로 진행률을 알려 줘요 */
+  upload: (a, form, onProgress) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'api.php?a=' + encodeURIComponent(a));
+    xhr.setRequestHeader('X-CSRF-Token', state.csrf);
+    xhr.withCredentials = true;
+    if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else { if (xhr.status === 401) onUnauthorized(); reject(new ApiError(xhr.status, data.error || (xhr.status === 413 ? '파일이 너무 커요' : '파일을 보내지 못했어요'), data)); }
+    };
+    xhr.onerror = () => reject(new ApiError(0, '인터넷 연결을 확인해 주세요'));
+    xhr.send(form);
+  }),
 };
+/* 앱(Flutter)으로 열었는지. 앱에서는 내려받기를 앱이 대신 처리해요 */
+export const inApp = () => !!(window.SFApp && window.SFApp.postMessage);
+/* 파일 내려받기: 브라우저는 링크로, 앱은 내용을 앱에 넘겨 저장·공유 창을 띄워요 */
+export async function download(url, name) {
+  if (!inApp()) { const a = document.createElement('a'); a.href = url; a.download = name || ''; document.body.append(a); a.click(); a.remove(); return; }
+  const res = await fetch(url, { credentials: 'same-origin' });
+  if (!res.ok) throw new Error('파일을 받지 못했어요');
+  const blob = await res.blob();
+  const b64 = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.readAsDataURL(blob); });
+  window.SFApp.postMessage(JSON.stringify({ type: 'download', name: name || 'file', data: b64 }));
+}
 
 /* ===== 화면 조각 =====
    h('div', {class: 'x', onclick: fn}, '글자', 자식요소...) — 글자는 항상 textContent 로 들어가요 */
@@ -117,6 +144,10 @@ const P = {
   grid: '<path d="M3 9h18M3 15h18M9 3v18M15 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/>',
   mindmap: '<circle cx="12" cy="12" r="3"/><circle cx="4.5" cy="5" r="2"/><circle cx="19.5" cy="5" r="2"/><circle cx="4.5" cy="19" r="2"/><circle cx="19.5" cy="19" r="2"/><path d="M9.8 10L6 6.4M14.2 10L18 6.4M9.8 14L6 17.6M14.2 14L18 17.6"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  clip: '<path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.6-8.6"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+  download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  pin: '<path d="M9 4h6l-1 6 4 3H6l4-3z"/><path d="M12 13v8"/>',
   group: '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2.5 19a5.5 5.5 0 0 1 11 0M10.5 19a5.5 5.5 0 0 1 11 0"/>',
   share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/>',
 };

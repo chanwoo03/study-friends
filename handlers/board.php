@@ -31,7 +31,7 @@ route('board.list', 'GET', function (int $me) {
         $cs = $byPost[(int)$p['id']] ?? [];
         if ($mine) foreach ($cs as &$c) $c['canDelete'] = true;
         return ['id' => (int)$p['id'], 'author' => $users[(int)$p['author_id']] ?? null, 'mine' => $mine,
-                'body' => $p['body'], 'at' => $p['created_at'], 'comments' => $cs];
+                'body' => $p['body'], 'at' => $p['created_at'], 'pinnedAt' => $p['pinned_at'] ?? null, 'comments' => $cs];
     }, $posts);
     return ['posts' => $out, 'hasMore' => count($posts) === 20 && !$after];
 });
@@ -64,4 +64,27 @@ route('board.uncomment', 'POST', function (int $me) {
     if ((int)$c['author_id'] !== $me && (int)$c['post_author'] !== $me) fail(403, '내 댓글이나 내 글의 댓글만 지울 수 있어요');
     q('DELETE FROM comments WHERE id = ?', [$c['id']]);
     return [];
+});
+
+/* 공지로 고정 / 풀기 (글쓴이만). 한 사람당 공지는 3개까지, 넘으면 가장 오래된 공지가 풀려요 */
+route('board.pin', 'POST', function (int $me) {
+    $p = post_visible(int_arg('id'), $me);
+    if ((int)$p['author_id'] !== $me) fail(403, '내가 쓴 글만 공지로 고정할 수 있어요');
+    if (arg('on', true)) {
+        q('UPDATE posts SET pinned_at = NOW() WHERE id = ?', [$p['id']]);
+        $ids = array_map('intval', array_column(rows('SELECT id FROM posts WHERE author_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC, id DESC', [$me]), 'id'));
+        foreach (array_slice($ids, 3) as $old) q('UPDATE posts SET pinned_at = NULL WHERE id = ?', [$old]);
+    } else {
+        q('UPDATE posts SET pinned_at = NULL WHERE id = ?', [$p['id']]);
+    }
+    return ['pinned' => (bool)val('SELECT pinned_at IS NOT NULL FROM posts WHERE id = ?', [$p['id']])];
+});
+
+/* 화면 위 공지 창: 나와 내 친구들이 고정한 공지 (최신 5개) */
+route('notice.list', 'GET', function (int $me) {
+    $list = rows('SELECT * FROM posts WHERE pinned_at IS NOT NULL AND (author_id = ? OR author_id IN (SELECT friend_id FROM friendships WHERE user_id = ?))
+                  ORDER BY pinned_at DESC LIMIT 5', [$me, $me]);
+    $users = users_by_ids(array_column($list, 'author_id'));
+    return ['notices' => array_map(fn($p) => ['id' => (int)$p['id'], 'author' => $users[(int)$p['author_id']] ?? null, 'mine' => (int)$p['author_id'] === $me,
+        'body' => mb_substr($p['body'], 0, 600), 'pinnedAt' => $p['pinned_at']], $list)];
 });
