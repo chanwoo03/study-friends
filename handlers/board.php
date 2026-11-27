@@ -55,7 +55,14 @@ route('board.comment', 'POST', function (int $me) {
     $body = str_arg('body', 1000, true, '댓글');
     if ((int)val('SELECT COUNT(*) FROM comments WHERE author_id = ? AND created_at > NOW() - INTERVAL 1 MINUTE', [$me]) >= 30) fail(429, '댓글을 너무 빨리 쓰고 있어요');
     q('INSERT INTO comments (post_id, author_id, body) VALUES (?, ?, ?)', [$p['id'], $me, $body]);
-    return ['id' => (int)db()->lastInsertId()];
+    $cid = (int)db()->lastInsertId();
+    // 글쓴이와 같은 글에 댓글 단 사람에게 (내 친구만: 친구가 아니면 내 댓글이 안 보이니까요)
+    $to = array_merge([(int)$p['author_id']], array_map('intval', array_column(rows('SELECT DISTINCT author_id FROM comments WHERE post_id = ?', [$p['id']]), 'author_id')));
+    $fr = array_flip(friend_ids($me));
+    $to = array_values(array_filter($to, fn($u) => isset($fr[$u])));
+    $postLine = one_line((string)$p['body'], 30);
+    notify($to, $me, 'board', 'post:' . $p['id'], fn($n, $c) => [$c > 1 ? "보드 댓글 {$c}개" : "{$n}님이 댓글을 달았어요", one_line($body, 60) . " · {$postLine}"], '/board');
+    return ['id' => $cid];
 });
 
 route('board.uncomment', 'POST', function (int $me) {
@@ -74,6 +81,10 @@ route('board.pin', 'POST', function (int $me) {
         q('UPDATE posts SET pinned_at = NOW() WHERE id = ?', [$p['id']]);
         $ids = array_map('intval', array_column(rows('SELECT id FROM posts WHERE author_id = ? AND pinned_at IS NOT NULL ORDER BY pinned_at DESC, id DESC', [$me]), 'id'));
         foreach (array_slice($ids, 3) as $old) q('UPDATE posts SET pinned_at = NULL WHERE id = ?', [$old]);
+        if (empty($p['pinned_at'])) {
+            $line = one_line((string)$p['body'], 80);
+            notify(friend_ids($me), $me, 'board', 'notice:' . $p['id'], fn($n, $c) => ["{$n}님이 공지를 올렸어요", $line], '/board');
+        }
     } else {
         q('UPDATE posts SET pinned_at = NULL WHERE id = ?', [$p['id']]);
     }

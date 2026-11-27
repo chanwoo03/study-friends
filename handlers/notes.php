@@ -31,6 +31,7 @@ route('notes.list', 'GET', function (int $me) {
 
 route('notes.get', 'GET', function (int $me) {
     $n = load_visible('note', int_arg('id'), $me);
+    notif_read_ref($me, 'note:' . $n['id']);
     return ['note' => note_out($n, $me, users_by_ids([$n['owner_id'], $n['updated_by']]), true)];
 });
 
@@ -60,6 +61,7 @@ route('notes.save', 'POST', function (int $me) {
         $cur = row('SELECT * FROM notes WHERE id = ?', [$n['id']]);
         fail(409, '다른 사람이 먼저 고쳤어요', ['note' => note_out($cur, $me, users_by_ids([$cur['owner_id'], $cur['updated_by']]), true)]);
     }
+    notify_note($n, $me, $title);
     return ['version' => $version + 1];
 });
 

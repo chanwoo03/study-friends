@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   invite_code   CHAR(8)      NOT NULL,
   created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_seen     DATETIME     NULL,
+  notif_off     VARCHAR(80)  NOT NULL DEFAULT '',
   UNIQUE KEY uq_username (username),
   UNIQUE KEY uq_invite (invite_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -257,4 +258,34 @@ CREATE TABLE IF NOT EXISTS notes (
   KEY idx_owner (owner_id),
   CONSTRAINT fk_note_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_note_editor FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 알림 (v6)
+CREATE TABLE IF NOT EXISTS notifications (
+  id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  actor_id   INT UNSIGNED NULL,
+  kind       VARCHAR(12)  NOT NULL,
+  title      VARCHAR(120) NOT NULL,
+  body       VARCHAR(300) NOT NULL DEFAULT '',
+  link       VARCHAR(120) NOT NULL DEFAULT '',
+  ref_key    VARCHAR(60)  NOT NULL,
+  cnt        INT UNSIGNED NOT NULL DEFAULT 1,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at    DATETIME     NULL,
+  KEY idx_user (user_id, id),
+  KEY idx_ref (user_id, ref_key),
+  CONSTRAINT fk_nt_user  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_nt_actor FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS notif_devices (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  token_hash CHAR(64)     NOT NULL,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen  DATETIME     NULL,
+  UNIQUE KEY uq_token (token_hash),
+  KEY idx_user (user_id),
+  CONSTRAINT fk_nd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

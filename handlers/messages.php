@@ -78,6 +78,7 @@ route('messages.list', 'GET', function (int $me) {
         $list = array_reverse(rows($sql, $before ? array_merge($pp, [$before]) : $pp));
     }
     q('UPDATE messages SET read_at = NOW() WHERE sender_id = ? AND receiver_id = ? AND read_at IS NULL', [$fid, $me]);
+    notif_read_ref($me, 'msg:' . $fid);
     // 상대가 내 메시지를 어디까지 읽었는지
     $readUpTo = (int)val('SELECT COALESCE(MAX(id), 0) FROM messages WHERE sender_id = ? AND receiver_id = ? AND read_at IS NOT NULL', [$me, $fid]);
     return ['messages' => array_map(fn($m) => msg_out($m, $me), $list), 'readUpTo' => $readUpTo,
@@ -93,7 +94,9 @@ route('messages.send', 'POST', function (int $me) {
     $recent = (int)val('SELECT COUNT(*) FROM messages WHERE sender_id = ? AND created_at > NOW() - INTERVAL 1 MINUTE', [$me]);
     if ($recent >= 60) fail(429, '메시지를 너무 빨리 보내고 있어요. 잠시 후 다시 보내 주세요');
     q('INSERT INTO messages (sender_id, receiver_id, kind, body) VALUES (?, ?, ?, ?)', [$me, $fid, $kind, $body]);
-    return ['message' => msg_out(row('SELECT * FROM messages WHERE id = ?', [(int)db()->lastInsertId()]), $me)];
+    $mid = (int)db()->lastInsertId();
+    notify_message($me, $fid, $kind, $body);
+    return ['message' => msg_out(row('SELECT * FROM messages WHERE id = ?', [$mid]), $me)];
 });
 
 /* 메시지에 반응 달기 (같은 걸 다시 누르면 취소, emoji 가 비면 지우기) */
@@ -174,7 +177,9 @@ route('messages.upload', 'POST', function (int $me) {
     if (!move_uploaded_file($f['tmp_name'], "$dir/$base.bin")) fail(500, '파일을 저장하지 못했어요 (uploads 폴더 권한 확인)');
     q('INSERT INTO messages (sender_id, receiver_id, kind, body, file_name, file_path, file_thumb, file_size, file_mime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [$me, $fid, $kind, $name, $name, "$base.bin", null, $size, $mime]);
-    return ['message' => msg_out(row('SELECT * FROM messages WHERE id = ?', [(int)db()->lastInsertId()]), $me)];
+    $mid = (int)db()->lastInsertId();
+    notify_message($me, $fid, 'file', $name);
+    return ['message' => msg_out(row('SELECT * FROM messages WHERE id = ?', [$mid]), $me)];
 });
 
 /* 받기: 주고받은 두 사람만. thumb=1 작은 사진, dl=1 내려받기 */

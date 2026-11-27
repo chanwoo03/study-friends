@@ -33,6 +33,7 @@ route('events.list', 'GET', function (int $me) {
 
 route('events.save', 'POST', function (int $me) {
     $id = int_arg('id', false);
+    $isNew = !$id;
     $title = str_arg('title', 100, true, '일정 이름');
     $memo = str_arg('memo', 2000);
     $start = date_arg('startDate');
@@ -59,6 +60,7 @@ route('events.save', 'POST', function (int $me) {
     save_shares('event', $id, $me, $visibility);
     db()->commit();
     $e = row('SELECT * FROM events WHERE id = ?', [$id]);
+    notify_event($e, $me, $isNew);
     return ['event' => event_out($e, $me, users_by_ids([$me]))];
 });
 

@@ -73,6 +73,11 @@ route('friends.regen', 'POST', function (int $me) {
 route('sync', 'GET', function (int $me) {
     return [
         'unread' => (int)val('SELECT COUNT(*) FROM messages WHERE receiver_id = ? AND read_at IS NULL', [$me]),
+        'notifUnread' => notif_unread($me),
+        // after 보다 새 알림 (화면이 작은 알림창·앱 알림으로 보여 줘요)
+        'notifs' => isset($_GET['after']) ? array_map(fn($n) => ['id' => (int)$n['id'], 'kind' => $n['kind'], 'title' => $n['title'], 'body' => $n['body'], 'link' => $n['link']],
+            rows('SELECT id, kind, title, body, link FROM notifications WHERE user_id = ? AND id > ? AND read_at IS NULL ORDER BY id ASC LIMIT 10', [$me, max(0, (int)$_GET['after'])])) : [],
+        'notifLast' => (int)val('SELECT COALESCE(MAX(id), 0) FROM notifications WHERE user_id = ?', [$me]),
         'now'    => now(),
         'today'  => date('Y-m-d'),
     ];

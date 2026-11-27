@@ -87,7 +87,10 @@ function plan_counts(array $plans, int $me): array {
     }
     return $out;
 }
-function touch_plan(int $planId): void { q('UPDATE plans SET updated_at = NOW() WHERE id = ?', [$planId]); }
+function touch_plan(int $planId, string $what = '할 일을 고쳤어요'): void {
+    q('UPDATE plans SET updated_at = NOW() WHERE id = ?', [$planId]);
+    notify_plan($planId, uid(), $what);   // 공동 계획이면 다른 참여자에게 알려요
+}
 
 route('plans.list', 'GET', function (int $me) {
     [$vis, $p] = visible_sql('p', 'plan', $me);
@@ -104,6 +107,7 @@ route('plans.list', 'GET', function (int $me) {
 });
 
 route('plans.get', 'GET', function (int $me) {
+    notif_read_ref($me, 'plan:' . int_arg('id'));
     $p = load_visible('plan', int_arg('id'), $me);
     $tasks = rows('SELECT * FROM plan_tasks WHERE plan_id = ? ORDER BY due_date, id', [$p['id']]);
     $extra = ['canWork' => can_work_on($p, $me)];
@@ -202,8 +206,10 @@ route('plans.save', 'POST', function (int $me) {
           [$me, $group ? 'group' : 'personal', $title, $color, $visibility, $gh, $gf, $gt]);
         $id = (int)db()->lastInsertId();
         if ($group) save_members($id, $me); else save_shares('plan', $id, $me, $visibility);
+        $created = true;
     }
     db()->commit();
+    notify_plan($id, $me, !empty($created) ? '공동 계획에 초대했어요' : '공동 계획을 고쳤어요', empty($created));
     return ['id' => $id];
 });
 
@@ -237,6 +243,7 @@ route('tasks.save', 'POST', function (int $me) {
     $date = date_arg('date');
     $subject = str_arg('subject', 40);
     $content = str_arg('content', 200, true, '할 일');
+    $wasEdit = (bool)$id;
     if ($id) {
         [$t] = workable_task($id, $me);
         q('UPDATE plan_tasks SET due_date=?, subject=?, content=? WHERE id=?', [$date, $subject, $content, $id]);
@@ -248,7 +255,7 @@ route('tasks.save', 'POST', function (int $me) {
         q('INSERT INTO plan_tasks (plan_id, due_date, subject, content) VALUES (?,?,?,?)', [$planId, $date, $subject, $content]);
         $id = (int)db()->lastInsertId();
     }
-    touch_plan($planId);
+    touch_plan($planId, $wasEdit ? "할 일을 고쳤어요: {$content}" : "할 일을 넣었어요: {$content}");
     $plan = row('SELECT * FROM plans WHERE id = ?', [$planId]);
     $t = row('SELECT * FROM plan_tasks WHERE id = ?', [$id]);
     return ['task' => is_group($plan) ? task_out($t, task_checks_map([$id])[$id] ?? [], $me) : task_out($t)];
@@ -280,14 +287,14 @@ route('tasks.bulk', 'POST', function (int $me) {
         $added++;
     }
     db()->commit();
-    touch_plan($planId);
+    if ($added) touch_plan($planId, "할 일 {$added}개를 넣었어요");
     return ['added' => $added, 'badLines' => $bad];
 });
 
 route('tasks.delete', 'POST', function (int $me) {
     [$t] = workable_task(int_arg('id'), $me);
     q('DELETE FROM plan_tasks WHERE id = ?', [$t['id']]);
-    touch_plan((int)$t['plan_id']);
+    touch_plan((int)$t['plan_id'], "할 일을 지웠어요: {$t['content']}");
     return [];
 });
 
@@ -301,7 +308,8 @@ route('tasks.toggle', 'POST', function (int $me) {
     } else {
         q('UPDATE plan_tasks SET done = ?, done_at = ? WHERE id = ?', [$done ? 1 : 0, $done ? now() : null, $t['id']]);
     }
-    touch_plan((int)$t['plan_id']);
+    if (is_group($plan)) touch_plan((int)$t['plan_id'], $done ? "할 일을 끝냈어요: {$t['content']}" : '할 일 체크를 풀었어요');
+    else touch_plan((int)$t['plan_id']);
     return ['done' => $done];
 });
 

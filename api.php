@@ -5,6 +5,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/bootstrap.php';
 require __DIR__ . '/lib/auth.php';
 require __DIR__ . '/lib/access.php';
+require __DIR__ . '/lib/notify.php';
 
 $ROUTES = [];
 /* $method: GET(읽기) / POST(쓰기). $public: 로그인 없이 부를 수 있는지 */
@@ -12,7 +13,7 @@ function route(string $name, string $method, callable $fn, bool $public = false)
     global $ROUTES;
     $ROUTES[$name] = [$method, $fn, $public];
 }
-foreach (['auth', 'friends', 'events', 'study', 'messages', 'board', 'canvas', 'notes', 'journal'] as $h) {
+foreach (['auth', 'friends', 'events', 'study', 'messages', 'board', 'canvas', 'notes', 'journal', 'notif'] as $h) {
     require __DIR__ . '/handlers/' . $h . '.php';
 }
 

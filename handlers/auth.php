@@ -77,6 +77,7 @@ route('auth.login', 'POST', function (?int $me) {
 }, true);
 
 route('auth.logout', 'POST', function (?int $me) {
+    if (!empty($_SESSION['notif_device'])) q('DELETE FROM notif_devices WHERE token_hash = ?', [(string)$_SESSION['notif_device']]);   // 이 앱 기기 알림 멈추기
     $_SESSION = [];
     session_regenerate_id(true);
     return ['csrf' => csrf_token()];

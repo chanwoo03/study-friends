@@ -1,6 +1,6 @@
 // 공부 친구 앱: 웹사이트(공부 친구)를 그대로 감싸서 보여 주는 앱이에요.
 // - 주소는 빌드할 때 바꿀 수 있어요:  flutter build apk --dart-define=APP_URL=http://내도메인/study_friend/
-// - 메시지에서 사진·파일 고르기, 파일 내려받기(저장·공유 창), 뒤로 가기, 인터넷 끊김 화면을 처리해요.
+// - 파일 고르기, 파일 내려받기(저장·공유 창), 뒤로 가기, 인터넷 끊김 화면, 휴대폰 알림을 처리해요.
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,6 +12,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:workmanager/workmanager.dart';
+
+import 'notifications.dart';
 
 const String appUrl = String.fromEnvironment('APP_URL', defaultValue: 'http://chanwlab.com/study_friend/');
 
@@ -24,8 +27,16 @@ bool _staysInApp(Uri u) {
   return u.host == 'kakao.com' || u.host.endsWith('.kakao.com');
 }
 
-void main() {
+// 알림을 누르면 열 화면 (예: /messages/3)
+final ValueNotifier<String?> pendingLink = ValueNotifier<String?>(null);
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await initNotifications(onTap: (link) { if (link != null && link.isNotEmpty) pendingLink.value = link; });
+    pendingLink.value = await launchLink();
+    if (Platform.isAndroid) await Workmanager().initialize(callbackDispatcher);
+  } catch (_) {}
   runApp(const StudyFriendsApp());
 }
 
@@ -66,6 +77,7 @@ class _WebShellState extends State<WebShell> {
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (p) => setState(() => _progress = p),
         onPageStarted: (_) => setState(() => _offline = false),
+        onPageFinished: (_) => _afterPageLoad(),
         onWebResourceError: (e) {
           if (e.isForMainFrame ?? false) setState(() => _offline = true);
         },
@@ -83,7 +95,30 @@ class _WebShellState extends State<WebShell> {
       android.setOnShowFileSelector(_pickFiles);
       android.setMediaPlaybackRequiresUserGesture(false);
     }
-    _web.loadRequest(Uri.parse(appUrl));
+    final first = pendingLink.value;
+    pendingLink.value = null;
+    _web.loadRequest(Uri.parse(first == null ? appUrl : '$appUrl#$first'));
+    pendingLink.addListener(_openPending);
+  }
+
+  @override
+  void dispose() {
+    pendingLink.removeListener(_openPending);
+    super.dispose();
+  }
+
+  // 알림을 눌렀을 때 그 화면으로
+  void _openPending() {
+    final link = pendingLink.value;
+    if (link == null) return;
+    pendingLink.value = null;
+    _web.runJavaScript('location.hash = ${jsonEncode('#$link')};');
+  }
+
+  // 이 기기가 아직 알림 등록이 안 됐으면 웹에게 다시 등록해 달라고 해요
+  Future<void> _afterPageLoad() async {
+    if (await hasDevice()) return;
+    await _web.runJavaScript("try { localStorage.removeItem('sf-device'); } catch (e) {} if (window.sfRegisterDevice) window.sfRegisterDevice();");
   }
 
   // 안드로이드: 웹의 <input type=file> 을 누르면 휴대폰 파일 고르기 창을 띄워요 (아이폰은 저절로 돼요)
@@ -107,6 +142,17 @@ class _WebShellState extends State<WebShell> {
   Future<void> _onWebMessage(String raw) async {
     try {
       final msg = jsonDecode(raw) as Map<String, dynamic>;
+      switch (msg['type']) {
+        case 'notify':
+          await showNotif(id: (msg['id'] as num).toInt(), kind: '${msg['kind']}', title: '${msg['title']}', body: '${msg['body'] ?? ''}', link: '${msg['link'] ?? ''}');
+          return;
+        case 'device':
+          await saveDevice('${msg['token']}', '${msg['api']}', (msg['lastId'] as num? ?? 0).toInt());
+          return;
+        case 'logout':
+          await clearDevice();
+          return;
+      }
       if (msg['type'] != 'download') return;
       final name = _safeName((msg['name'] as String?) ?? 'file');
       final bytes = base64Decode((msg['data'] as String?) ?? '');

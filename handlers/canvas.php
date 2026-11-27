@@ -114,6 +114,7 @@ route('canvas.delete', 'POST', function (int $me) {
 /* after 가 있으면 그 뒤 획만. version 이 바뀌었으면(되돌리기·지우기) 화면이 전체를 다시 받아요 */
 route('canvas.get', 'GET', function (int $me) {
     $c = load_visible('canvas', int_arg('id'), $me);
+    notif_read_ref($me, 'canvas:' . $c['id']);
     $after = int_arg('after', false);
     $strokes = rows('SELECT * FROM strokes WHERE canvas_id = ? AND id > ? ORDER BY id LIMIT 3000', [$c['id'], $after]);
     $userIds = $after ? [] : array_column(rows('SELECT DISTINCT user_id FROM strokes WHERE canvas_id = ?', [$c['id']]), 'user_id');
@@ -129,6 +130,7 @@ route('canvas.stroke', 'POST', function (int $me) {
     q('INSERT INTO strokes (canvas_id, user_id, data) VALUES (?, ?, ?)', [$c['id'], $me, json_encode($d, JSON_UNESCAPED_UNICODE)]);
     $sid = (int)db()->lastInsertId();
     q('UPDATE canvases SET updated_at = NOW() WHERE id = ?', [$c['id']]);
+    notify_canvas($c, $me);
     return ['id' => $sid];
 });
 
@@ -145,6 +147,7 @@ route('canvas.clear', 'POST', function (int $me) {
     $c = load_owned('canvas', int_arg('id'), $me);
     q('DELETE FROM strokes WHERE canvas_id = ?', [$c['id']]);
     q('UPDATE canvases SET version = version + 1, updated_at = NOW() WHERE id = ?', [$c['id']]);
+    notify_canvas($c, $me);
     return ['version' => (int)val('SELECT version FROM canvases WHERE id = ?', [$c['id']])];
 });
 
@@ -156,6 +159,7 @@ route('canvas.edit', 'POST', function (int $me) {
     $d = clean_stroke(arg('d'));
     q('UPDATE strokes SET data = ? WHERE id = ?', [json_encode($d, JSON_UNESCAPED_UNICODE), $sid]);
     q('UPDATE canvases SET version = version + 1, updated_at = NOW() WHERE id = ?', [$c['id']]);
+    notify_canvas($c, $me);
     return ['version' => (int)val('SELECT version FROM canvases WHERE id = ?', [$c['id']]), 'd' => $d];
 });
 
@@ -167,6 +171,7 @@ route('canvas.remove', 'POST', function (int $me) {
     $sids = array_slice(array_values(array_unique(array_map('intval', $sids))), 0, 500);
     q('DELETE FROM strokes WHERE canvas_id = ? AND id IN (' . in_list($sids) . ')', array_merge([$c['id']], $sids));
     q('UPDATE canvases SET version = version + 1, updated_at = NOW() WHERE id = ?', [$c['id']]);
+    notify_canvas($c, $me);
     return ['version' => (int)val('SELECT version FROM canvases WHERE id = ?', [$c['id']])];
 });
 
@@ -185,5 +190,6 @@ route('canvas.bulk', 'POST', function (int $me) {
     }
     q('UPDATE canvases SET updated_at = NOW() WHERE id = ?', [$c['id']]);
     db()->commit();
+    notify_canvas($c, $me);
     return ['strokes' => $out];
 });

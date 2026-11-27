@@ -1,5 +1,5 @@
 /* 앱 시작, 로그인 화면, 메뉴, 화면 전환 */
-import { state, api, h, icon, toast, setUnauthorizedHandler, every, setTitle, avatar, app, setServerNow } from './core.js';
+import { state, api, h, icon, toast, setUnauthorizedHandler, every, setTitle, avatar, app, setServerNow, inApp } from './core.js';
 import { noticeFloat } from './notice.js';
 
 const root = document.getElementById('root');
@@ -8,6 +8,7 @@ const NAV = [
   ['study', '공부', 'study'],
   ['rank', '등수', 'trophy'],
   ['messages', '메시지', 'chat'],
+  ['notifs', '알림', 'bell'],
   ['board', '보드', 'board'],
   ['draw', '그림판', 'draw'],
   ['notes', '메모장', 'note'],
@@ -27,6 +28,7 @@ const VIEWS = {
   friends: () => import('./views/friends.js'),
   settings: () => import('./views/settings.js'),
   more: () => import('./views/more.js'),
+  notifs: () => import('./views/notifs.js'),
 };
 
 /* #/notes/3?x=1 → {name:'notes', params:['3'], query:{x:'1'}} */
@@ -108,6 +110,7 @@ function buildShell() {
   const themeBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '화면 테마 바꾸기', onclick: toggleTheme });
   const topMe = h('a', { class: 'top-me', href: '#/settings', 'aria-label': '내 프로필' });
   const top = h('header', { class: 'topbar' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'), h('div', { class: 'grow' }), themeBtn,
+    h('a', { class: 'btn ghost icon top-bell', href: '#/notifs', 'data-k': 'notifs', 'aria-label': '알림' }, icon('bell'), h('span', { class: 'badge-n', hidden: true })),
     h('a', { class: 'btn ghost icon', href: '#/friends', 'aria-label': '친구' }, icon('users')), topMe);
   const tabs = h('nav', { class: 'tabbar', 'aria-label': '메뉴' });
   const tabLabel = { calendar: ['캘린더', 'calendar'], study: ['공부', 'study'], messages: ['메시지', 'chat'], board: ['보드', 'board'], more: ['더보기', 'more'] };
@@ -147,6 +150,7 @@ function paintNav(name) {
 export function paintBadges() {
   if (!shell) return;
   for (const b of document.querySelectorAll('[data-k="messages"] .badge-n')) { b.hidden = !state.unread; b.textContent = state.unread > 99 ? '99+' : String(state.unread); }
+  for (const b of document.querySelectorAll('[data-k="notifs"] .badge-n')) { b.hidden = !state.notifUnread; b.textContent = state.notifUnread > 99 ? '99+' : String(state.notifUnread); }
 }
 function paintTheme() {
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -194,7 +198,9 @@ async function render() {
 
 export async function logout() {
   try { const r = await api.post('auth.logout'); state.csrf = r.csrf; } catch (e) {}
-  state.me = null; state.friends = []; state.friendsAt = 0;
+  state.me = null; state.friends = []; state.friendsAt = 0; state.notifLast = null; state.notifUnread = 0;
+  try { localStorage.removeItem('sf-device'); } catch (e) {}
+  if (inApp()) window.SFApp.postMessage(JSON.stringify({ type: 'logout' }));
   go('login'); render();
 }
 
@@ -205,10 +211,31 @@ setUnauthorizedHandler(() => {
 
 async function syncBadge() {
   if (!state.me) return;
-  const r = await api.get('sync');
+  const first = state.notifLast === null;
+  const r = await api.get('sync', first ? {} : { after: state.notifLast });
   setServerNow(r.now);
-  if (r.unread !== state.unread) { state.unread = r.unread; paintBadges(); }
+  if (r.unread !== state.unread || r.notifUnread !== state.notifUnread) { state.unread = r.unread; state.notifUnread = r.notifUnread; paintBadges(); }
+  if (!first) for (const n of r.notifs || []) showNotif(n);
+  state.notifLast = Math.max(state.notifLast || 0, r.notifLast || 0);
+  if (first) registerDevice().catch(() => {});
 }
+/* 새 알림: 앱이면 휴대폰 알림으로, 웹이면 화면 아래 작은 알림으로 (지금 그 화면을 보고 있으면 건너뛰어요) */
+function showNotif(n) {
+  if (location.hash.replace(/^#/, '') === n.link) return;
+  if (inApp()) { window.SFApp.postMessage(JSON.stringify({ type: 'notify', id: n.id, title: n.title, body: n.body, link: n.link, kind: n.kind })); return; }
+  toast(n.title + (n.body ? ' · ' + n.body : ''));
+}
+/* 앱으로 열었으면 이 기기를 알림 받을 곳으로 등록 (로그인한 사람마다 한 번) */
+async function registerDevice() {
+  if (!inApp() || !state.me) return;
+  const key = 'sf-device';
+  try { if (localStorage.getItem(key) === String(state.me.id)) return; } catch (e) {}
+  const r = await api.post('notif.device');
+  window.SFApp.postMessage(JSON.stringify({ type: 'device', token: r.token, lastId: r.lastId, api: new URL('api.php', location.href).href }));
+  try { localStorage.setItem(key, String(state.me.id)); } catch (e) {}
+}
+app.syncNow = () => syncBadge().catch(() => {});
+window.sfRegisterDevice = () => registerDevice().catch(() => {});   // 앱이 '다시 등록해 줘' 할 때
 
 async function boot() {
   try {

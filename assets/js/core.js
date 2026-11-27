@@ -7,7 +7,7 @@ for (const m of ['append', 'prepend', 'replaceChildren']) {
   Element.prototype[m] = function (...kids) { return orig.apply(this, kids.filter((k) => k !== null && k !== undefined && k !== false)); };
 }
 
-export const state = { me: null, csrf: '', providers: {}, allowRegister: true, friends: [], friendsAt: 0, unread: 0 };
+export const state = { me: null, csrf: '', providers: {}, allowRegister: true, friends: [], friendsAt: 0, unread: 0, notifUnread: 0, notifLast: null };
 
 /* ===== 서버 요청 ===== */
 export class ApiError extends Error {
@@ -117,6 +117,7 @@ const P = {
   back: '<path d="M15 5l-7 7 7 7"/>',
   next: '<path d="M9 5l7 7-7 7"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   down: '<path d="M5 9l7 7 7-7"/>',
   sidebar: '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/>',
   lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',

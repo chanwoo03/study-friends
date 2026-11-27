@@ -4,7 +4,7 @@ declare(strict_types=1);
    이미 설치한 사이트도 새 기능에 필요한 표·칸이 저절로 추가돼요. 기존 데이터는 건드리지 않아요.
    새 버전에서 표 구조가 바뀌면 SCHEMA_VERSION 을 올리고 아래 sf_migrations() 에 단계를 덧붙여요. */
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 function sf_col_exists(PDO $db, string $table, string $col): bool {
     $st = $db->prepare('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
@@ -127,6 +127,44 @@ function sf_migrate(PDO $db): array {
     if (!sf_col_exists($db, 'posts', 'pinned_at')) {
         $db->exec("ALTER TABLE posts ADD COLUMN pinned_at DATETIME NULL, ADD KEY idx_pinned (pinned_at)");
         $done[] = 'posts.pinned_at';
+    }
+    // v6: 알림
+    if (!sf_col_exists($db, 'users', 'notif_off')) {
+        $db->exec("ALTER TABLE users ADD COLUMN notif_off VARCHAR(80) NOT NULL DEFAULT ''");
+        $done[] = 'users.notif_off';
+    }
+    if (!sf_table_exists($db, 'notifications')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS notifications (
+  id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  actor_id   INT UNSIGNED NULL,
+  kind       VARCHAR(12)  NOT NULL,
+  title      VARCHAR(120) NOT NULL,
+  body       VARCHAR(300) NOT NULL DEFAULT '',
+  link       VARCHAR(120) NOT NULL DEFAULT '',
+  ref_key    VARCHAR(60)  NOT NULL,
+  cnt        INT UNSIGNED NOT NULL DEFAULT 1,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at    DATETIME     NULL,
+  KEY idx_user (user_id, id),
+  KEY idx_ref (user_id, ref_key),
+  CONSTRAINT fk_nt_user  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_nt_actor FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'notifications';
+    }
+    if (!sf_table_exists($db, 'notif_devices')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS notif_devices (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  token_hash CHAR(64)     NOT NULL,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen  DATETIME     NULL,
+  UNIQUE KEY uq_token (token_hash),
+  KEY idx_user (user_id),
+  CONSTRAINT fk_nd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'notif_devices';
     }
     return $done;
 }
