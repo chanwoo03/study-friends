@@ -31,6 +31,12 @@ android {
         versionName = flutter.versionName
     }
 
+    // 배포용 빌드 때 자동 코드 검사(lint)는 건너뛰어요 (검사 도구 자체 오류로 빌드가 멈추는 일을 막아요)
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
