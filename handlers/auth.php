@@ -20,6 +20,7 @@ route('config', 'GET', function (?int $me) {
         'allowRegister' => (bool)cfg('allow_register', true),
         'me'            => $me && val('SELECT id FROM users WHERE id = ?', [$me]) ? me_payload($me) : null,
         'today'         => date('Y-m-d'),
+        'now'           => date('Y-m-d H:i:s'),
     ];
 }, true);
 
@@ -76,6 +77,7 @@ route('auth.login', 'POST', function (?int $me) {
 }, true);
 
 route('auth.logout', 'POST', function (?int $me) {
+    if (!empty($_SESSION['notif_device'])) q('DELETE FROM notif_devices WHERE token_hash = ?', [(string)$_SESSION['notif_device']]);   // 이 앱 기기 알림 멈추기
     $_SESSION = [];
     session_regenerate_id(true);
     return ['csrf' => csrf_token()];
@@ -117,8 +119,44 @@ route('me.unlink', 'POST', function (int $me) {
 
 route('me.delete', 'POST', function (int $me) {
     if ((string)arg('confirm', '') !== '탈퇴') fail(400, '확인 칸에 ‘탈퇴’라고 적어 주세요');
+    $av = val('SELECT avatar FROM users WHERE id = ?', [$me]);
+    if (function_exists('journal_delete_user_files')) journal_delete_user_files($me);
+    if (function_exists('proof_delete_user_files')) proof_delete_user_files($me);
+    if (function_exists('msg_delete_user_files')) msg_delete_user_files($me);
     q('DELETE FROM users WHERE id = ?', [$me]);
+    if (function_exists('remove_avatar_file')) remove_avatar_file($av);
     $_SESSION = [];
     session_regenerate_id(true);
     return ['csrf' => csrf_token()];
+});
+
+/* ===== 프로필 사진 =====
+   화면(브라우저)에서 256px 정사각형으로 줄인 뒤 data URL 로 보내요. 서버는 진짜 그림인지 확인하고 uploads/avatars 에 저장해요 */
+function avatar_dir(): string { return dirname(__DIR__) . '/uploads/avatars'; }
+function remove_avatar_file(?string $rel): void {
+    if (!$rel || !preg_match('#^uploads/avatars/[A-Za-z0-9_]+\.(jpg|png|webp)$#', $rel)) return;
+    $f = dirname(__DIR__) . '/' . $rel;
+    if (is_file($f)) @unlink($f);
+}
+route('me.avatar', 'POST', function (int $me) {
+    $data = (string)arg('image', '');
+    if (!preg_match('#^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$#', $data, $m)) fail(400, '사진 형식이 잘못됐어요 (JPG·PNG·WEBP)');
+    $bin = base64_decode($m[2], true);
+    if ($bin === false || strlen($bin) > 400 * 1024) fail(400, '사진이 너무 커요');
+    $info = @getimagesizefromstring($bin);
+    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'][$info['mime'] ?? ''] ?? null;
+    if (!$info || !$ext || $info[0] < 16 || $info[1] < 16 || $info[0] > 1024 || $info[1] > 1024) fail(400, '사진을 읽지 못했어요. 다른 사진으로 해 주세요');
+    $dir = avatar_dir();
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) fail(500, '사진을 저장할 폴더를 만들지 못했어요 (uploads 폴더 권한 확인)');
+    $name = $me . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
+    if (@file_put_contents($dir . '/' . $name, $bin) === false) fail(500, '사진을 저장하지 못했어요 (uploads 폴더 권한 확인)');
+    $old = val('SELECT avatar FROM users WHERE id = ?', [$me]);
+    q('UPDATE users SET avatar = ? WHERE id = ?', ['uploads/avatars/' . $name, $me]);
+    remove_avatar_file($old);
+    return ['me' => me_payload($me)];
+});
+route('me.avatar_remove', 'POST', function (int $me) {
+    remove_avatar_file(val('SELECT avatar FROM users WHERE id = ?', [$me]));
+    q('UPDATE users SET avatar = NULL WHERE id = ?', [$me]);
+    return ['me' => me_payload($me)];
 });

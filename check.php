@@ -30,12 +30,20 @@ if (is_array($cfg)) {
     $here = ($https ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? '') . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/'), '/\\');
     $same = strcasecmp($url, $here) === 0;
     item('app_url 이 지금 주소와 같음', $same, $same ? $url : "config.php 의 app_url 은 '{$url}' 인데 지금 주소는 '{$here}' 예요. 지금 주소로 바꿔 주세요");
-    item('HTTPS 로 접속', $https, $https ? '보안 연결' : 'http 로 열렸어요. 호스팅에서 무료 SSL(HTTPS)을 켜고 https:// 주소를 쓰세요 (카카오·구글 로그인에 필요)');
+    // HTTPS 는 권장이지만 없어도 앱은 돌아가요 (구글 로그인만 HTTPS 가 꼭 필요)
+    item('HTTPS (권장)', true, $https ? '보안 연결' : '⚠ http 로 쓰는 중이에요. 앱은 돌아가지만 비밀번호가 암호화되지 않은 채 오가요. 구글 로그인은 HTTPS 가 있어야 쓸 수 있어요');
 
     $sp = (string)($cfg['session_path'] ?? '') ?: __DIR__ . '/sessions';
     if (!is_dir($sp)) @mkdir($sp, 0700, true);
     $w = is_dir($sp) && is_writable($sp);
     item('로그인 저장 폴더 쓰기 가능', $w, $w ? '사용 가능' : '폴더(sessions)에 쓸 수 없어요. FTP 프로그램에서 sessions 폴더 권한을 700 또는 755 로 바꿔 주세요');
+    $bad = [];
+    foreach (['avatars', 'journal', 'proofs', 'messages'] as $d) {
+        $p = __DIR__ . '/uploads/' . $d;
+        if (!is_dir($p)) @mkdir($p, 0755, true);
+        if (!is_dir($p) || !is_writable($p)) $bad[] = $d;
+    }
+    item('사진·파일 저장 폴더 쓰기 가능', !$bad, !$bad ? '사용 가능 (uploads/avatars, journal, proofs, messages)' : 'uploads 안의 ' . implode(', ', $bad) . ' 폴더에 쓸 수 없어요. FTP 프로그램에서 uploads 폴더와 그 안의 폴더 권한을 755 (안 되면 707) 로 바꿔 주세요');
 
     $db = $cfg['db'] ?? [];
     try {
@@ -46,7 +54,11 @@ if (is_array($cfg)) {
         $isMaria = stripos($ver, 'mariadb') !== false;
         $okVer = $isMaria ? version_compare($ver, '10.2', '>=') : version_compare($ver, '5.6.5', '>=');
         item('DB 버전', $okVer, $okVer ? '사용 가능' : 'MySQL 5.6.5 / MariaDB 10.2 이상이 필요해요. 호스팅 고객센터에 DB 버전을 물어보세요');
-        $need = ['users','oauth_accounts','login_attempts','friendships','shares','events','plans','plan_tasks','study_sessions','messages','posts','comments','canvases','strokes','notes'];
+        $need = ['users','oauth_accounts','login_attempts','friendships','shares','events','plans','plan_tasks','plan_members','task_checks','day_notes','day_photos','study_sessions','messages','message_reactions','posts','comments','canvases','strokes','notes','notifications','notif_devices'];
+        require_once __DIR__ . '/lib/migrate.php';
+        // 예전 버전으로 설치한 DB 는 새 표·칸을 자동으로 추가
+        try { $up = sf_migrate($pdo); if ($up) item('새 버전 업그레이드', true, '추가함: ' . implode(', ', $up)); }
+        catch (Throwable $e3) { item('새 버전 업그레이드', false, '실패: ' . $e3->getMessage()); }
         $have = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
         $missing = array_values(array_diff($need, $have));
         /* '표 만들기' 버튼: schema.sql 을 실행해 없는 표만 만들어요 (이미 있는 표는 건드리지 않아요) */
@@ -55,6 +67,7 @@ if (is_array($cfg)) {
             $sql = preg_replace('/^\s*--.*$/m', '', $sql);
             try {
                 foreach (array_filter(array_map('trim', explode(';', $sql))) as $stmt) $pdo->exec($stmt);
+                sf_migrate($pdo);
                 header('Location: check.php?installed=1');
                 exit;
             } catch (Throwable $e2) {
@@ -64,7 +77,7 @@ if (is_array($cfg)) {
             $missing = array_values(array_diff($need, $have));
         }
         $needInstall = (bool)$missing;
-        item('표(테이블) 15개', !$missing, $missing ? (count($missing) === 15 ? '아직 없어요 → 아래 ‘표 만들기’ 버튼을 누르세요' : '없는 표: ' . implode(', ', $missing) . ' → 아래 ‘표 만들기’ 버튼을 누르세요') : (isset($_GET['installed']) ? '방금 만들었어요' : '모두 있음'));
+        item('표(테이블) ' . count($need) . '개', !$missing, $missing ? (count($missing) === count($need) ? '아직 없어요 → 아래 ‘표 만들기’ 버튼을 누르세요' : '없는 표: ' . implode(', ', $missing) . ' → 아래 ‘표 만들기’ 버튼을 누르세요') : (isset($_GET['installed']) ? '방금 만들었어요' : '모두 있음'));
     } catch (Throwable $e) {
         $m = $e->getMessage();
         $hint = str_contains($m, 'Access denied') ? 'DB 아이디나 비밀번호가 틀렸어요'

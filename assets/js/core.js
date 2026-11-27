@@ -1,6 +1,13 @@
 /* 여러 화면이 같이 쓰는 도구: 서버 요청, 화면 조각 만들기, 날짜, 알림, 모달 */
 
-export const state = { me: null, csrf: '', providers: {}, allowRegister: true, friends: [], friendsAt: 0, unread: 0 };
+/* 화면에 조각을 넣을 때 null·undefined·false 는 건너뛰어요.
+   (조건에 따라 빠지는 조각이 'null' 글자로 보이는 실수를 앱 전체에서 막아요) */
+for (const m of ['append', 'prepend', 'replaceChildren']) {
+  const orig = Element.prototype[m];
+  Element.prototype[m] = function (...kids) { return orig.apply(this, kids.filter((k) => k !== null && k !== undefined && k !== false)); };
+}
+
+export const state = { me: null, csrf: '', providers: {}, allowRegister: true, friends: [], friendsAt: 0, unread: 0, notifUnread: 0, notifLast: null };
 
 /* ===== 서버 요청 ===== */
 export class ApiError extends Error {
@@ -36,7 +43,34 @@ async function call(action, { method = 'GET', params, body, retried } = {}) {
 export const api = {
   get: (a, params) => call(a, { params }),
   post: (a, body) => call(a, { method: 'POST', body }),
+  /* 파일 올리기 (multipart). onProgress(0~1) 로 진행률을 알려 줘요 */
+  upload: (a, form, onProgress) => new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'api.php?a=' + encodeURIComponent(a));
+    xhr.setRequestHeader('X-CSRF-Token', state.csrf);
+    xhr.withCredentials = true;
+    if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else { if (xhr.status === 401) onUnauthorized(); reject(new ApiError(xhr.status, data.error || (xhr.status === 413 ? '파일이 너무 커요' : '파일을 보내지 못했어요'), data)); }
+    };
+    xhr.onerror = () => reject(new ApiError(0, '인터넷 연결을 확인해 주세요'));
+    xhr.send(form);
+  }),
 };
+/* 앱(Flutter)으로 열었는지. 앱에서는 내려받기를 앱이 대신 처리해요 */
+export const inApp = () => !!(window.SFApp && window.SFApp.postMessage);
+/* 파일 내려받기: 브라우저는 링크로, 앱은 내용을 앱에 넘겨 저장·공유 창을 띄워요 */
+export async function download(url, name) {
+  if (!inApp()) { const a = document.createElement('a'); a.href = url; a.download = name || ''; document.body.append(a); a.click(); a.remove(); return; }
+  const res = await fetch(url, { credentials: 'same-origin' });
+  if (!res.ok) throw new Error('파일을 받지 못했어요');
+  const blob = await res.blob();
+  const b64 = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.readAsDataURL(blob); });
+  window.SFApp.postMessage(JSON.stringify({ type: 'download', name: name || 'file', data: b64 }));
+}
 
 /* ===== 화면 조각 =====
    h('div', {class: 'x', onclick: fn}, '글자', 자식요소...) — 글자는 항상 textContent 로 들어가요 */
@@ -82,6 +116,10 @@ const P = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   next: '<path d="M9 5l7 7-7 7"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  down: '<path d="M5 9l7 7 7-7"/>',
+  sidebar: '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/>',
   lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
   globe: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4-6"/>',
   pick: '<circle cx="10" cy="8" r="3.5"/><path d="M3.5 20a6.5 6.5 0 0 1 10-5.5"/><path d="M15 18l2 2 4-4"/>',
@@ -94,6 +132,27 @@ const P = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   refresh: '<path d="M20 11a8 8 0 0 0-14.9-3.5M4 4v4h4M4 13a8 8 0 0 0 14.9 3.5M20 20v-4h-4"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.9 0 3.6-.6 5-1.4"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
+  cursor: '<path d="M5 3l14 8-6 1.6L10 19z"/>',
+  rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
+  diamond: '<path d="M12 3l9 9-9 9-9-9z"/>',
+  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+  badge: '<circle cx="12" cy="9" r="6"/><path d="M8.5 13.5L7 22l5-3 5 3-1.5-8.5"/><path d="M9.5 9l1.8 1.8L14.8 7.3"/>',
+  circle: '<ellipse cx="12" cy="12" rx="8.5" ry="7"/>',
+  line: '<path d="M5 19L19 5"/>',
+  arrow: '<path d="M5 19L19 5M10 5h9v9"/>',
+  text: '<path d="M5 6V4h14v2M12 4v16M9 20h6"/>',
+  sticky: '<path d="M5 4h14v10l-6 6H5z"/><path d="M13 20v-6h6"/>',
+  grid: '<path d="M3 9h18M3 15h18M9 3v18M15 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/>',
+  mindmap: '<circle cx="12" cy="12" r="3"/><circle cx="4.5" cy="5" r="2"/><circle cx="19.5" cy="5" r="2"/><circle cx="4.5" cy="19" r="2"/><circle cx="19.5" cy="19" r="2"/><path d="M9.8 10L6 6.4M14.2 10L18 6.4M9.8 14L6 17.6M14.2 14L18 17.6"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  clip: '<path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.6-8.6"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+  download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  pin: '<path d="M9 4h6l-1 6 4 3H6l4-3z"/><path d="M12 13v8"/>',
+  group: '<circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2.5 19a5.5 5.5 0 0 1 11 0M10.5 19a5.5 5.5 0 0 1 11 0"/>',
   share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/>',
 };
 export function icon(name, cls = '') {
@@ -111,7 +170,11 @@ export const pad = (n) => String(n).padStart(2, '0');
 export const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const parseD = (s) => { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
 export const parseDT = (s) => { const [d, t = '00:00:00'] = s.split(' '); const [y, m, dd] = d.split('-').map(Number); const [hh, mi, ss] = t.split(':').map(Number); return new Date(y, m - 1, dd, hh, mi, ss || 0); };
-export const today = () => ymd(new Date());
+/* '오늘'은 서버(한국 시간) 기준이에요. 기기 시간대가 달라도 캘린더·공부 기록의 날짜가 서버와 같게 */
+let clockSkew = 0;
+export function setServerNow(s) { if (s) clockSkew = parseDT(s).getTime() - Date.now(); }
+export const nowLocal = () => new Date(Date.now() + clockSkew);
+export const today = () => ymd(nowLocal());
 export const addDays = (s, n) => { const d = parseD(s); d.setDate(d.getDate() + n); return ymd(d); };
 export const daysBetween = (a, b) => Math.round((parseD(b) - parseD(a)) / 86400000);
 export function mdw(s) { const d = parseD(s); return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WD[d.getDay()]}요일`; }
@@ -123,7 +186,7 @@ export function fmtDur(sec) {
 }
 export function ago(dt) {
   if (!dt) return '';
-  const m = Math.floor((Date.now() - parseDT(dt)) / 60000);
+  const m = Math.floor((nowLocal() - parseDT(dt)) / 60000);
   if (m < 1) return '방금';
   if (m < 60) return `${m}분 전`;
   if (m < 1440) return `${Math.floor(m / 60)}시간 전`;
@@ -174,9 +237,16 @@ export function confirmBtn(label, confirmLabel, onConfirm, cls = 'btn danger sm'
 }
 
 /* ===== 사람 ===== */
+/* 프로필 사진이 있으면 사진, 없으면 이름 첫 글자 동그라미 */
 export function avatar(u, size = '') {
   const name = (u && u.name) || '?';
-  return h('span', { class: 'av ' + size, style: { '--c': (u && u.color) || '#888' }, title: name }, Array.from(name)[0]);
+  const letter = h('span', { class: 'av ' + size, style: { '--c': (u && u.color) || '#888' }, title: name }, Array.from(name)[0]);
+  if (u && u.avatar && /^uploads\/avatars\/[A-Za-z0-9_]+\.(jpg|png|webp)$/.test(u.avatar)) {
+    const img = h('img', { class: 'av img ' + size, src: u.avatar, alt: '', title: name, loading: 'lazy' });
+    img.addEventListener('error', () => img.replaceWith(letter));
+    return img;
+  }
+  return letter;
 }
 export async function loadFriends(force = false) {
   if (!force && Date.now() - state.friendsAt < 15000) return state.friends;

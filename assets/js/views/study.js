@@ -1,6 +1,9 @@
-/* 공부: 타이머, 친구들 공부 상태, 주간 공부 시간, 공부 계획(할 일 체크) */
+/* 공부: 타이머, 친구들 공부 상태, 주간 공부 시간, 공부 계획 (혼자 계획 / 공동 계획) */
 import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, visibilityPicker, colorPicker, loadFriends, every, setTitle, pageHead,
-  WD, parseD, parseDT, today, addDays, mdw, md, fmtDur, VIS_LABEL, visIcon, app } from '../core.js';
+  WD, parseD, parseDT, today, addDays, md, mdw, fmtDur, VIS_LABEL, visIcon, app } from '../core.js';
+import { taskLine, cheerModal } from '../shared.js';
+import { proofModal } from '../journal.js';
+import { ranked } from './rank.js';
 
 export default function mount(view, route) {
   if (route.params[0] === 'plan' && route.params[1]) return planPage(view, Number(route.params[1]));
@@ -12,42 +15,35 @@ let skew = 0;
 function setNow(serverNow) { if (serverNow) skew = parseDT(serverNow).getTime() - Date.now(); }
 function elapsed(since) { return since ? Math.max(0, (Date.now() + skew - parseDT(since).getTime()) / 1000) : 0; }
 
-const CHEERS = ['화이팅!', '같이 공부하자', '오늘도 수고했어', '조금만 더 힘내'];
-export function cheerModal(friend) {
-  const input = h('input', { maxlength: '200', placeholder: '직접 써서 보내기' });
-  async function send(text) {
-    if (!text.trim()) return;
-    try { await api.post('messages.send', { to: friend.id, body: text.trim() }); m.close(); toast(friend.name + '님에게 보냈어요'); } catch (e) { errToast(e); }
-  }
-  const m = modal([
-    h('h2', null, friend.name + '님 응원하기'), h('p', { class: 'lead' }, '메시지로 바로 보내져요'),
-    h('div', { class: 'quick' }, CHEERS.map((c) => h('button', { type: 'button', onclick: () => send(c) }, c))),
-    h('form', { class: 'composer', style: { 'border-top': '0' }, onsubmit: (e) => { e.preventDefault(); send(input.value); } }, h('div', { class: 'grow field' }, input), h('button', { class: 'btn primary', type: 'submit' }, icon('send'), '보내기')),
-  ]);
-}
-
 /* ===== 공부 첫 화면 ===== */
 async function dashboard(view) {
   setTitle('공부');
-  const S = { status: { todaySeconds: 0, studyingSince: null }, friends: [], week: null, todayTasks: [], plans: [] };
+  const S = { status: { todaySeconds: 0, studyingSince: null, _base: 0 }, friends: [] };
   const timerBig = h('div', { class: 'big' }, '0분');
   const timerBtn = h('button', { class: 'tbtn', type: 'button', onclick: toggleTimer });
   const mates = h('div');
   const weekBox = h('div');
+  const rankBox = h('div');
   const todayBox = h('div');
+  const groupBox = h('div', { class: 'plans' });
   const plansBox = h('div', { class: 'plans' });
 
   view.append(
-    pageHead('공부', '친구들과 같이 공부 시간과 계획을 나눠요', h('button', { class: 'btn primary', type: 'button', onclick: () => editPlan(null) }, icon('plus'), '새 계획')),
+    pageHead('공부', '친구들과 같이 공부 시간과 계획을 나눠요',
+      h('button', { class: 'btn primary', type: 'button', onclick: () => editPlan(null, null, 'personal') }, icon('plus'), '새 계획')),
     h('div', { class: 'study-top' },
       h('div', { class: 'card timer' }, h('p', { class: 'eyebrow' }, '오늘 내가 공부한 시간'), timerBig, timerBtn,
         h('p', { class: 'tiny muted', style: { margin: '10px 0 0' } }, '공부를 시작하면 친구들 화면에 ‘공부 중’으로 보여요')),
       h('div', { class: 'card' }, h('h2', null, '친구들은 지금'), mates)),
     h('div', { class: 'grid2', style: { 'margin-top': '14px' } },
-      h('div', { class: 'card' }, h('h2', null, '오늘 할 일'), todayBox),
+      h('div', { class: 'card' }, h('div', { class: 'row', style: { 'justify-content': 'space-between', 'margin-bottom': '12px' } },
+        h('h2', { style: { margin: 0 } }, '오늘 할 일'), h('a', { class: 'btn ghost sm', href: '#/day/' + today() }, '오늘 자세히', icon('next'))), todayBox),
       h('div', { class: 'card' }, h('h2', null, '최근 7일 공부 시간'), weekBox)),
-    h('div', { class: 'head', style: { margin: '28px 0 12px' } }, h('h2', { style: { margin: 0, 'font-size': '19px', 'font-weight': '800' } }, '공부 계획')),
-    plansBox);
+    h('div', { class: 'card', style: { 'margin-top': '14px' } },
+      h('div', { class: 'row', style: { 'justify-content': 'space-between', 'margin-bottom': '10px' } },
+        h('h2', { style: { margin: 0 } }, icon('trophy'), ' 이번 주 친구 등수'), h('a', { class: 'btn ghost sm', href: '#/rank' }, '전체 보기', icon('next'))), rankBox),
+    h('h2', { class: 'sec-title' }, icon('group'), '공동 계획'), groupBox,
+    h('h2', { class: 'sec-title' }, icon('study'), '공부 계획'), plansBox);
 
   function paintTimer() {
     const on = !!S.status.studyingSince;
@@ -69,7 +65,9 @@ async function dashboard(view) {
       setStatus(s);
       toast(on ? `오늘 ${fmtDur(s.todaySeconds)} 공부했어요` : '공부를 시작했어요');
       paintTimer();
-      if (on) loadWeek();
+      if (on) { loadWeek(); loadRank(); }
+      // 1분 넘게 공부했으면 인증을 남길지 물어봐요 (선택)
+      if (on && s.sessionId && s.sessionSeconds >= 60) proofModal({ id: s.sessionId, seconds: s.sessionSeconds, proof: null }, { onDone: () => loadRank() });
     } catch (e) { errToast(e); } finally { timerBtn.disabled = false; }
   }
   function paintMates() {
@@ -84,7 +82,7 @@ async function dashboard(view) {
       const secs = f.todaySeconds + (on ? Math.max(0, elapsed(f.studyingSince) - f._base) : 0);
       mates.append(h('div', { class: 'mate' }, avatar(f),
         h('div', { style: { 'min-width': '0' } }, h('div', { class: 'nm' }, f.name),
-          h('div', { class: 'st' }, on ? [h('span', { class: 'live-dot' }), `공부 중 · ${fmtDur(elapsed(f.studyingSince))}째`] : `쉬는 중`, ` · 오늘 ${fmtDur(secs)}`)),
+          h('div', { class: 'st' }, on ? [h('span', { class: 'live-dot' }), `공부 중 · ${fmtDur(elapsed(f.studyingSince))}째`] : '쉬는 중', ` · 오늘 ${fmtDur(secs)}`)),
         h('button', { class: 'btn sm', type: 'button', onclick: () => cheerModal(f) }, '응원')));
     }
   }
@@ -98,8 +96,8 @@ async function dashboard(view) {
     const w = await api.get('study.week');
     const max = Math.max(3600, ...w.series.flatMap((s) => s.seconds));
     const T = today();
-    const cols = w.days.map((d, i) => h('div', null,
-      h('div', { class: 'col', title: w.series.map((s) => `${s.mine ? '나' : s.user.name} ${fmtDur(s.seconds[i])}`).join('\n') },
+    const cols = w.days.map((d, i) => h('a', { href: '#/day/' + d, class: 'wk', title: w.series.map((s) => `${s.mine ? '나' : s.user.name} ${fmtDur(s.seconds[i])}`).join('\n') },
+      h('div', { class: 'col' },
         w.series.map((s) => h('i', { style: { '--c': s.seconds[i] ? s.user.color : 'var(--line)', height: Math.max(2, Math.round(s.seconds[i] / max * 100)) + '%' } }))),
       h('div', { class: 'lb' + (d === T ? ' today' : '') }, d === T ? '오늘' : WD[parseD(d).getDay()])));
     const mine = w.series.find((s) => s.mine);
@@ -111,29 +109,37 @@ async function dashboard(view) {
   async function loadToday() {
     const T = today();
     const r = await api.get('tasks.range', { from: T, to: T });
-    const mine = r.tasks.filter((t) => t.mine), others = r.tasks.filter((t) => !t.mine);
+    const mine = r.tasks.filter((t) => t.mine);
     todayBox.replaceChildren();
-    if (!mine.length) todayBox.append(h('div', { class: 'small muted' }, '오늘 날짜에 잡힌 내 할 일이 없어요. 아래에서 계획을 만들거나 열어 할 일을 추가하세요'));
+    if (!mine.length) { todayBox.append(h('div', { class: 'small muted' }, '오늘 날짜에 잡힌 내 할 일이 없어요. 아래에서 계획을 만들거나 열어 할 일을 추가하세요')); return; }
     const ul = h('ul', { class: 'list' });
-    for (const t of mine) ul.append(taskItem(t, { onChange: loadPlans, showPlan: true }));
+    for (const t of mine) ul.append(taskLine(t, { showPlan: true, onToggled: () => loadPlans() }));
     todayBox.append(ul);
-    if (others.length) {
-      const by = new Map();
-      for (const t of others) { if (!by.has(t.owner.id)) by.set(t.owner.id, { u: t.owner, n: 0, d: 0 }); const x = by.get(t.owner.id); x.n++; if (t.done) x.d++; }
-      todayBox.append(h('div', { class: 'sec-label' }, '친구들 오늘 진도'));
-      for (const { u, n, d } of by.values()) todayBox.append(h('div', { class: 'row small', style: { margin: '6px 0' } }, avatar(u, 'sm'), h('b', null, u.name),
-        h('div', { class: 'bar grow', style: { '--c': u.color } }, h('i', { style: { width: (d / n * 100) + '%' } })), h('span', { class: 'muted' }, `${d}/${n}`)));
-    }
+  }
+  /* 이번 주 공부 시간 1~3등 미리보기 */
+  async function loadRank() {
+    const r = await api.get('rank.get', { period: 'week' });
+    const rows = ranked(r.rows, 'seconds');
+    rankBox.replaceChildren();
+    if (rows.length < 2) { rankBox.append(h('div', { class: 'small muted' }, '친구를 추가하면 이번 주 공부 시간으로 등수를 겨룰 수 있어요')); return; }
+    const me = rows.find((x) => x.mine);
+    rankBox.append(h('div', { class: 'mini-rank' }, rows.slice(0, 3).map((x) => h('a', { href: '#/rank', class: 'mr' + (x.mine ? ' me' : '') },
+      h('span', { class: 'medal m' + x.rank }, x.rank), avatar(x.user, 'sm'), h('b', null, x.mine ? '나' : x.user.name), h('span', { class: 'small muted' }, fmtDur(x.seconds))))),
+      me && me.rank > 3 ? h('p', { class: 'small muted', style: { margin: '8px 0 0' } }, `나는 ${rows.length}명 중 ${me.rank}등 · ${fmtDur(me.seconds)}`) : '');
   }
   async function loadPlans() {
     const r = await api.get('plans.list');
-    S.plans = r.plans;
+    const groups = r.plans.filter((p) => p.kind === 'group'), solo = r.plans.filter((p) => p.kind !== 'group');
+    groupBox.replaceChildren();
+    if (!groups.length) groupBox.append(h('div', { class: 'card empty', style: { 'grid-column': '1/-1' } }, '친구들과 같은 목표를 세워 보세요. 같은 할 일을 각자 체크하고, 같이 공부한 시간을 모아요. ',
+      h('button', { class: 'link', type: 'button', onclick: () => editPlan(null, null, 'group') }, '공동 계획 만들기')));
+    for (const p of groups) groupBox.append(planCard(p));
     plansBox.replaceChildren();
-    if (!r.plans.length) { plansBox.append(h('div', { class: 'card empty', style: { 'grid-column': '1/-1' } }, '아직 공부 계획이 없어요. ‘새 계획’으로 시험 준비표를 만들어 보세요')); return; }
-    for (const p of r.plans) plansBox.append(planCard(p));
+    if (!solo.length) plansBox.append(h('div', { class: 'card empty', style: { 'grid-column': '1/-1' } }, '아직 공부 계획이 없어요. ‘새 계획’으로 시험 준비표를 만들어 보세요'));
+    for (const p of solo) plansBox.append(planCard(p));
   }
 
-  await Promise.all([loadStatus(), loadWeek(), loadToday(), loadPlans()]).catch(errToast);
+  await Promise.all([loadStatus(), loadWeek(), loadToday(), loadPlans(), loadRank()]).catch(errToast);
   const stopTick = every(10000, async () => paintTimer());
   const stopPoll = every(30000, () => Promise.all([loadStatus(), loadToday()]));
   return () => { stopTick(); stopPoll(); };
@@ -141,67 +147,115 @@ async function dashboard(view) {
 
 function planCard(p) {
   const pct = p.total ? Math.round(p.done / p.total * 100) : 0;
-  return h('a', { class: 'plan-card', href: '#/study/plan/' + p.id },
+  const group = p.kind === 'group';
+  return h('a', { class: 'plan-card' + (group ? ' group' : ''), href: '#/study/plan/' + p.id },
     h('div', { class: 't' }, h('i', { class: 'dot', style: { '--c': p.color } }), h('span', null, p.title)),
-    h('div', { class: 'row small muted' }, avatar(p.owner, 'sm'), p.mine ? '나' : p.owner.name, p.mine ? h('span', { class: 'pill' }, visIcon(p.visibility), VIS_LABEL[p.visibility]) : null),
+    group
+      ? h('div', { class: 'row small muted' }, h('span', { class: 'faces' }, (p.members || []).slice(0, 6).map((u) => avatar(u, 'sm'))), `${(p.members || []).length}명이 같이`)
+      : h('div', { class: 'row small muted' }, avatar(p.owner, 'sm'), p.mine ? '나' : p.owner.name, p.mine ? h('span', { class: 'pill' }, visIcon(p.visibility), VIS_LABEL[p.visibility]) : null),
     h('div', { class: 'bar', style: { '--c': p.color } }, h('i', { style: { width: pct + '%' } })),
-    h('div', { class: 'meta' }, h('span', null, `${p.done}/${p.total} 완료 · ${pct}%`), h('span', null, p.firstDate ? `${md(p.firstDate)} – ${md(p.lastDate)}` : '할 일 없음')));
+    h('div', { class: 'meta' }, h('span', null, `${group ? '내 진도 ' : ''}${p.done}/${p.total} · ${pct}%`), h('span', null, p.firstDate ? `${md(p.firstDate)} – ${md(p.lastDate)}` : '할 일 없음')),
+    p.goal ? h('div', { class: 'tiny muted row' }, icon('target'), `목표 ${p.goal.hours}시간 · ${md(p.goal.from)}–${md(p.goal.to)}`) : null);
 }
 
-/* 할 일 한 줄. 내 것만 체크할 수 있어요 */
-function taskItem(t, { onChange, showPlan, onEdit, onDelete } = {}) {
-  const color = t.planColor || 'var(--me)';
-  const btn = h('button', { type: 'button', class: 'check', style: { '--c': color }, 'aria-pressed': String(!!t.done), disabled: t.mine === false, 'aria-label': (t.subject ? t.subject + ' ' : '') + t.content }, icon('check'));
-  const acts = onEdit ? h('span', { class: 'acts' },
-    h('button', { class: 'btn ghost icon sm', type: 'button', 'aria-label': '고치기', onclick: (e) => { e.stopPropagation(); onEdit(t); } }, icon('edit')),
-    h('button', { class: 'btn ghost icon sm', type: 'button', 'aria-label': '지우기', onclick: (e) => { e.stopPropagation(); onDelete(t); } }, icon('trash'))) : null;
-  const li = h('li', { class: 'task' + (t.done ? ' done' : '') + (t.mine !== false ? ' can' : '') }, btn,
-    h('span', { class: 'tx' }, t.subject ? h('b', null, t.subject) : null, h('span', null, t.content)),
-    showPlan ? h('a', { class: 'tiny muted', href: '#/study/plan/' + t.planId, onclick: (e) => e.stopPropagation() }, t.planTitle) : acts);
-  if (t.mine !== false) li.addEventListener('click', async () => {
-    t.done = !t.done;
-    li.classList.toggle('done', t.done); btn.setAttribute('aria-pressed', String(t.done));
-    try {
-      await api.post('tasks.toggle', { id: t.id, done: t.done });
-      if (onChange) onChange(t);
-    } catch (e) { t.done = !t.done; li.classList.toggle('done', t.done); btn.setAttribute('aria-pressed', String(t.done)); errToast(e); }
-  });
-  return li;
-}
-
-/* 계획 만들기/고치기 */
-function editPlan(p, onSaved) {
+/* 계획 만들기/설정. 맨 위에서 혼자 계획 / 친구와 공동 계획을 골라요 (만든 뒤에도 바꿀 수 있어요) */
+function editPlan(p, onSaved, kind) {
   const isNew = !p;
-  p = p || { title: '', color: state.me.color, visibility: 'friends', shares: [] };
-  const title = h('input', { maxlength: '100', value: p.title, placeholder: '예: 2학기 기말고사 준비' });
+  const origKind = p ? p.kind : null;
+  let k = p ? p.kind : (kind === 'group' ? 'group' : 'personal');
+  p = p || { title: '', color: state.me.color, visibility: 'friends', shares: [], memberIds: [], goal: null };
+  const title = h('input', { maxlength: '100', value: p.title });
   const color = colorPicker(p.color);
-  const vis = visibilityPicker(p.visibility, p.shares);
+  const vis = visibilityPicker(p.visibility || 'friends', p.shares || []);
+  /* 공동 계획 참여자 고르기 (내 친구 중에서) */
+  const chosen = new Set((p.memberIds || []).map(Number));
+  const who = h('div', { class: 'who' }, h('span', { class: 'tiny muted' }, '친구 목록을 불러오는 중…'));
+  loadFriends().then((fr) => {
+    who.replaceChildren();
+    if (!fr.length) { who.append(h('span', { class: 'tiny muted' }, '아직 친구가 없어요. 친구 화면에서 초대 코드로 먼저 추가하세요')); return; }
+    for (const f of fr) {
+      const cb = h('input', { type: 'checkbox', checked: chosen.has(f.id), onchange: (e) => { e.target.checked ? chosen.add(f.id) : chosen.delete(f.id); } });
+      who.append(h('label', null, cb, avatar(f, 'sm'), f.name));
+    }
+  }).catch(() => {});
+  const whoBox = h('div', { class: 'vis who-box' }, h('div', { class: 'field' }, '같이 할 친구'), who);
+
+  /* 혼자 / 공동 고르기 */
+  const kindBtns = {};
+  const kindBox = h('div', { class: 'kind-pick', role: 'group', 'aria-label': '계획 종류' });
+  for (const [key, ic, label, desc] of [
+    ['personal', 'study', '혼자 계획', '체크는 나만 해요. 공개 범위로 친구에게 보여 줄 수 있어요'],
+    ['group', 'group', '친구와 공동 계획', '고른 친구들과 같은 할 일을 각자 체크하고, 같이 공부한 시간을 모아요'],
+  ]) {
+    kindBtns[key] = h('button', { type: 'button', class: 'kind-opt', onclick: () => { k = key; paint(); } }, icon(ic), h('b', null, label), h('span', null, desc));
+    kindBox.append(kindBtns[key]);
+  }
+  const heading = h('h2');
+  const warn = h('div', { class: 'banner', hidden: true });
+  const goalLabel = h('span');
+  const goalFieldLabel = h('span');
+
+  /* 목표: 기간 동안 공부할 시간 (공동 계획은 모두 합친 시간) */
+  const g = p.goal || {};
+  const goalOn = h('input', { type: 'checkbox', checked: !!p.goal, onchange: () => { goalBox.hidden = !goalOn.checked; } });
+  const goalHours = h('input', { type: 'number', min: '1', max: '10000', value: g.hours || (k === 'group' ? 30 : 10), inputmode: 'numeric' });
+  const goalFrom = h('input', { type: 'date', value: g.from || today() });
+  const goalTo = h('input', { type: 'date', value: g.to || addDays(today(), 6) });
+  const goalBox = h('div', { class: 'form', hidden: !p.goal },
+    h('label', { class: 'field' }, goalFieldLabel, goalHours),
+    h('div', { class: 'two' }, h('label', { class: 'field' }, '시작', goalFrom), h('label', { class: 'field' }, '끝', goalTo)));
   const err = h('div', { class: 'err', role: 'alert' });
-  const save = h('button', { class: 'btn primary', type: 'submit' }, isNew ? '만들기' : '저장');
-  const m = modal([h('h2', null, isNew ? '새 공부 계획' : '계획 설정'),
-    h('p', { class: 'lead' }, '할 일은 계획을 만든 뒤 날짜별로 추가해요. 체크는 만든 사람만 할 수 있어요'),
+  const save = h('button', { class: 'btn primary', type: 'submit' });
+
+  function paint() {
+    const group = k === 'group';
+    for (const key in kindBtns) kindBtns[key].setAttribute('aria-pressed', String(key === k));
+    heading.textContent = isNew ? '새 공부 계획' : '계획 설정';
+    title.placeholder = group ? '예: 같이 기말고사 끝내기' : '예: 2학기 기말고사 준비';
+    vis.el.hidden = group; whoBox.hidden = !group;
+    goalLabel.textContent = group ? '공동 목표 시간 정하기' : '목표 공부 시간 정하기';
+    goalFieldLabel.textContent = group ? '모두 합쳐 공부할 시간 (시간)' : '공부할 시간 (시간)';
+    const changing = !isNew && k !== origKind;
+    warn.hidden = !changing;
+    warn.textContent = !changing ? '' : group
+      ? '공동 계획으로 바꾸면 지금까지 내가 한 체크는 그대로 \'내 체크\'로 옮겨져요. 고른 친구들도 할 일을 추가하고 각자 체크할 수 있어요'
+      : '혼자 계획으로 바꾸면 참여한 친구들은 빠지고, 친구들의 체크 기록은 지워져요. 내 체크만 남아요';
+    save.textContent = isNew ? '만들기' : changing ? '바꾸고 저장' : '저장';
+  }
+
+  const m = modal([heading,
     h('form', { class: 'form', onsubmit: async (e) => {
-      e.preventDefault(); err.textContent = ''; save.disabled = true;
+      e.preventDefault(); err.textContent = '';
+      const group = k === 'group';
+      if (group && !chosen.size) { err.textContent = '같이 할 친구를 한 명 이상 골라 주세요'; return; }
+      save.disabled = true;
       try {
-        const r = await api.post('plans.save', { id: p.id, title: title.value, color: color.value(), ...vis.value() });
-        m.close(); toast(isNew ? '계획을 만들었어요' : '저장했어요');
+        const body = { id: p.id, kind: k, title: title.value, color: color.value(),
+          goalHours: goalOn.checked ? goalHours.value : 0, goalFrom: goalFrom.value, goalTo: goalTo.value };
+        if (group) body.members = [...chosen]; else Object.assign(body, vis.value());
+        const r = await api.post('plans.save', body);
+        m.close(); toast(isNew ? '계획을 만들었어요' : k !== origKind ? (group ? '공동 계획으로 바꿨어요' : '혼자 계획으로 바꿨어요') : '저장했어요');
         if (isNew) app.go('study/plan/' + r.id); else if (onSaved) onSaved();
       } catch (ex) { err.textContent = ex.message; } finally { save.disabled = false; }
-    } }, h('label', { class: 'field' }, '계획 이름', title), color.el, vis.el, err,
+    } }, kindBox, warn, h('label', { class: 'field' }, '계획 이름', title), color.el, vis.el, whoBox,
+      h('label', { class: 'check-line' }, goalOn, goalLabel), goalBox, err,
       h('div', { class: 'actions' },
         isNew ? null : h('span', { class: 'left' }, confirmBtn('계획 삭제', '한 번 더 누르면 할 일까지 모두 삭제', async () => {
           try { await api.post('plans.delete', { id: p.id }); m.close(); toast('계획을 지웠어요'); app.go('study'); } catch (ex) { errToast(ex); }
         })),
         h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, '취소'), save))]);
+  paint();
 }
 
 /* ===== 계획 한 개 ===== */
 async function planPage(view, id) {
   let plan, tasks;
+  let lastDate = null, lastSubject = '';
   const headBox = h('div');
+  const groupBox = h('div');
   const addBox = h('div');
   const listBox = h('div', { class: 'card' });
-  view.append(h('a', { class: 'btn ghost sm', href: '#/study', style: { 'margin-bottom': '8px' } }, icon('back'), '공부'), headBox, addBox, listBox);
+  view.append(h('a', { class: 'btn ghost sm', href: '#/study', style: { 'margin-bottom': '8px' } }, icon('back'), '공부'), headBox, groupBox, addBox, listBox);
 
   async function load() {
     const r = await api.get('plans.get', { id });
@@ -209,38 +263,99 @@ async function planPage(view, id) {
     setTitle(plan.title);
     paint();
   }
+  const isGroup = () => plan.kind === 'group';
+  const people = () => plan.members || [plan.owner];
+
   function paint() {
     const done = tasks.filter((t) => t.done).length, pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
     headBox.replaceChildren(
-      pageHead(plan.title, null, plan.mine ? h('button', { class: 'btn', type: 'button', onclick: () => editPlan(plan, load) }, icon('gear'), '설정') : null,
-        plan.mine ? h('button', { class: 'btn', type: 'button', onclick: bulk }, icon('plus'), '여러 줄 추가') : null,
-        plan.mine ? null : h('button', { class: 'btn', type: 'button', onclick: () => cheerModal(plan.owner) }, '응원하기')),
-      h('div', { class: 'row small muted', style: { 'margin-top': '-8px', 'margin-bottom': '14px' } }, avatar(plan.owner, 'sm'), plan.mine ? '내 계획' : plan.owner.name + '님의 계획',
-        plan.mine ? h('span', { class: 'pill' }, visIcon(plan.visibility), VIS_LABEL[plan.visibility]) : null,
+      pageHead(plan.title, null,
+        plan.mine ? h('button', { class: 'btn', type: 'button', onclick: () => editPlan(plan, load) }, icon('gear'), '설정') : null,
+        plan.canWork ? h('button', { class: 'btn', type: 'button', onclick: bulk }, icon('plus'), '여러 줄 추가') : null,
+        isGroup() && !plan.mine && plan.canWork ? confirmBtn('나가기', '한 번 더 누르면 나가요', async () => {
+          try { await api.post('plans.leave', { id: plan.id }); toast('공동 계획에서 나왔어요'); app.go('study'); } catch (e) { errToast(e); }
+        }, 'btn ghost') : null,
+        !isGroup() && !plan.mine ? h('button', { class: 'btn', type: 'button', onclick: () => cheerModal(plan.owner) }, '응원하기') : null),
+      h('div', { class: 'row small muted', style: { 'margin-top': '-8px', 'margin-bottom': '14px' } },
+        isGroup() ? [h('span', { class: 'pill accent' }, icon('group'), '공동 계획'), `${plan.owner.name}님이 만듦`]
+          : [avatar(plan.owner, 'sm'), plan.mine ? '내 계획' : plan.owner.name + '님의 계획', plan.mine ? h('span', { class: 'pill' }, visIcon(plan.visibility), VIS_LABEL[plan.visibility]) : null],
         h('span', { class: 'grow' }),
-        h('span', null, `${done}/${tasks.length} 완료 · ${pct}%`)),
+        h('span', null, `${isGroup() ? '내 진도 ' : ''}${done}/${tasks.length} · ${pct}%`)),
       h('div', { class: 'bar', style: { '--c': plan.color, 'margin-bottom': '14px' } }, h('i', { style: { width: pct + '%' } })));
-    addBox.replaceChildren(plan.mine ? addForm() : h('div'));
+    paintGroup();
+    addBox.replaceChildren(plan.canWork ? addForm() : h('div'));
     paintList();
   }
+
+  /* 공동 계획: 사람별 진도와 공동 목표 */
+  function paintGroup() {
+    groupBox.replaceChildren();
+    const goal = plan.goal;
+    if (!isGroup() && !goal) return;
+    const card = h('div', { class: 'card', style: { 'margin-bottom': '14px' } });
+    if (goal) {
+      const total = plan.goalSeconds || 0;
+      const goalSecs = goal.hours * 3600;
+      const ended = today() > goal.to, notYet = today() < goal.from;
+      const left = Math.max(0, Math.round((parseD(goal.to) - parseD(today())) / 86400000));
+      card.append(h('div', { class: 'goal' },
+        h('div', { class: 'row', style: { 'justify-content': 'space-between' } },
+          h('h2', { style: { margin: 0 } }, icon('target'), isGroup() ? ' 공동 목표' : ' 목표'),
+          h('span', { class: 'small muted' }, `${mdw(goal.from)} ~ ${mdw(goal.to)}` + (ended ? ' · 끝남' : notYet ? ' · 시작 전' : ` · ${left}일 남음`))),
+        h('div', { class: 'goal-num' }, h('b', null, fmtDur(total)), h('span', null, ` / ${goal.hours}시간`),
+          h('span', { class: 'pill' + (total >= goalSecs ? ' live' : '') }, total >= goalSecs ? '달성!' : `${Math.round(total / goalSecs * 100)}%`)),
+        isGroup() ? stackBar(plan.members, goalSecs) : h('div', { class: 'bar', style: { '--c': plan.color } }, h('i', { style: { width: Math.min(100, total / goalSecs * 100) + '%' } })),
+        h('p', { class: 'tiny muted', style: { margin: '8px 0 0' } }, isGroup() ? '참여한 사람들이 이 기간에 공부 타이머로 잰 시간을 모두 더해요' : '이 기간에 공부 타이머로 잰 시간이 모여요')));
+    }
+    if (isGroup()) {
+      card.append(h('div', { class: 'sec-label' }, '사람별 진도'));
+      const n = tasks.length;
+      for (const u of plan.members) {
+        card.append(h('div', { class: 'member' }, avatar(u), h('div', { class: 'grow', style: { 'min-width': '0' } },
+          h('div', { class: 'row', style: { 'justify-content': 'space-between' } }, h('b', null, u.name, u.isOwner ? h('span', { class: 'tiny muted' }, ' · 만든 사람') : null),
+            h('span', { class: 'small muted' }, `${u.done}/${n}` + (goal ? ` · ${fmtDur(u.goalSeconds)}` : ''))),
+          h('div', { class: 'bar', style: { '--c': u.color } }, h('i', { style: { width: (n ? u.done / n * 100 : 0) + '%' } })))));
+      }
+    }
+    groupBox.append(card);
+  }
+  function stackBar(members, goalSecs) {
+    const bar = h('div', { class: 'stack', title: members.map((u) => `${u.name} ${fmtDur(u.goalSeconds)}`).join('\n') });
+    for (const u of members) if (u.goalSeconds) bar.append(h('i', { style: { '--c': u.color, width: Math.min(100, u.goalSeconds / goalSecs * 100) + '%' } }));
+    return bar;
+  }
+
   function paintList() {
     listBox.replaceChildren();
-    if (!tasks.length) { listBox.append(h('div', { class: 'empty' }, plan.mine ? '위에서 날짜·과목·할 일을 넣어 추가하세요' : '아직 할 일이 없어요')); return; }
+    if (!tasks.length) { listBox.append(h('div', { class: 'empty' }, plan.canWork ? '위에서 날짜·과목·할 일을 넣어 추가하세요' : '아직 할 일이 없어요')); return; }
     const T = today();
     const by = new Map();
     for (const t of tasks) { if (!by.has(t.date)) by.set(t.date, []); by.get(t.date).push(t); }
     for (const [d, list] of by) {
       const dd = parseD(d);
       const ul = h('ul', { class: 'list' });
-      for (const t of list) ul.append(taskItem({ ...t, mine: plan.mine, planColor: plan.color, planTitle: plan.title }, {
-        onChange: (x) => { const o = tasks.find((y) => y.id === x.id); if (o) o.done = x.done; paintHeadOnly(); },
-        onEdit: plan.mine ? editTask : null, onDelete: plan.mine ? delTask : null }));
+      for (const t of list) {
+        const task = { ...t, planColor: plan.color, planTitle: plan.title, kind: plan.kind };
+        const actions = plan.canWork ? h('span', { class: 'acts' },
+          h('button', { class: 'btn ghost icon sm', type: 'button', 'aria-label': '고치기', onclick: (e) => { e.stopPropagation(); editTask(t); } }, icon('edit')),
+          h('button', { class: 'btn ghost icon sm', type: 'button', 'aria-label': '지우기', onclick: (e) => { e.stopPropagation(); delTask(t); } }, icon('trash'))) : null;
+        ul.append(taskLine(task, { canCheck: plan.canWork, people: isGroup() ? people() : null, actions,
+          onToggled: (x) => { const o = tasks.find((y) => y.id === x.id); if (o) { o.done = x.done; if (x.checks) o.checks = x.checks; } refreshCounts(); } }));
+      }
       listBox.append(h('div', { class: 'date-group' + (d === T ? ' today' : d < T ? ' past' : '') },
-        h('div', { class: 'w' }, h('b', null, `${dd.getMonth() + 1}.${dd.getDate()}`), h('small', null, WD[dd.getDay()] + '요일' + (d === T ? ' · 오늘' : ''))),
+        h('a', { class: 'w', href: '#/day/' + d }, h('b', null, `${dd.getMonth() + 1}.${dd.getDate()}`), h('small', null, WD[dd.getDay()] + '요일' + (d === T ? ' · 오늘' : ''))),
         h('div', { style: { 'min-width': '0' } }, ul)));
     }
   }
-  function paintHeadOnly() { const sy = scrollY; paint(); scrollTo(0, sy); }
+  /* 체크한 뒤 위쪽 숫자·사람별 진도만 다시 계산 (목록은 그대로) */
+  function refreshCounts() {
+    if (isGroup()) for (const u of plan.members) u.done = tasks.filter((t) => (t.checks || []).includes(u.id)).length;
+    const y = scrollY;
+    const done = tasks.filter((t) => t.done).length, pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+    headBox.querySelector('.bar i').style.width = pct + '%';
+    const label = headBox.querySelector('.row.small.muted > span:last-child'); if (label) label.textContent = `${isGroup() ? '내 진도 ' : ''}${done}/${tasks.length} · ${pct}%`;
+    paintGroup(); scrollTo(0, y);
+  }
 
   function addForm() {
     const date = h('input', { type: 'date', value: lastDate || today() });
@@ -261,7 +376,6 @@ async function planPage(view, id) {
       h('label', { class: 'field' }, '날짜', date), h('label', { class: 'field' }, '과목', subject), h('label', { class: 'field' }, '할 일', content), btn),
       h('datalist', { id: 'subj-list' }, subjects.map((s) => h('option', { value: s }))));
   }
-  let lastDate = null, lastSubject = '';
 
   function editTask(t) {
     const date = h('input', { type: 'date', value: t.date });
@@ -273,13 +387,13 @@ async function planPage(view, id) {
       try {
         const r = await api.post('tasks.save', { id: t.id, date: date.value, subject: subject.value, content: content.value });
         Object.assign(tasks.find((x) => x.id === t.id), r.task); tasks.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
-        m.close(); paintHeadOnly();
+        m.close(); const y = scrollY; paint(); scrollTo(0, y);
       } catch (ex) { err.textContent = ex.message; }
     } }, h('label', { class: 'field' }, '날짜', date), h('label', { class: 'field' }, '과목', subject), h('label', { class: 'field' }, '할 일', content), err,
       h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, '취소'), h('button', { class: 'btn primary', type: 'submit' }, '저장')))]);
   }
   async function delTask(t) {
-    try { await api.post('tasks.delete', { id: t.id }); tasks = tasks.filter((x) => x.id !== t.id); paintHeadOnly(); toast('지웠어요'); } catch (e) { errToast(e); }
+    try { await api.post('tasks.delete', { id: t.id }); tasks = tasks.filter((x) => x.id !== t.id); const y = scrollY; paint(); scrollTo(0, y); toast('지웠어요'); } catch (e) { errToast(e); }
   }
   function bulk() {
     const ta = h('textarea', { rows: '10', placeholder: '2026-12-01 | DB | 11주차 복습\n2026-12-02 | 프론트엔드 | 11~13주차\n12/3 머신러닝 전체 복습' });
@@ -302,5 +416,12 @@ async function planPage(view, id) {
     view.replaceChildren(h('div', { class: 'card empty' }, e.message, h('br'), h('a', { href: '#/study' }, '공부 화면으로')));
     return;
   }
-  return every(45000, async () => { if (!plan.mine) await load(); });
+  // 공동 계획이거나 친구 계획이면 다른 사람이 바꾼 내용을 가끔 다시 받아요 (입력 중이 아닐 때)
+  return every(30000, async () => {
+    if (!isGroup() && plan.mine) return;
+    const a = document.activeElement;
+    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && view.contains(a)) return;
+    if (document.querySelector('.modal-bg')) return;
+    const y = scrollY; await load(); scrollTo(0, y);
+  });
 }

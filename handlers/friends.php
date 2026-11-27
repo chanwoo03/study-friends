@@ -23,7 +23,7 @@ function study_today(array $ids): array {
 }
 
 route('friends.list', 'GET', function (int $me) {
-    $list = rows('SELECT u.id, u.display_name, u.color, u.last_seen, f.created_at AS since
+    $list = rows('SELECT u.id, u.display_name, u.color, u.avatar, u.last_seen, f.created_at AS since
                   FROM friendships f JOIN users u ON u.id = f.friend_id WHERE f.user_id = ? ORDER BY u.display_name', [$me]);
     $ids = array_map(fn($u) => (int)$u['id'], $list);
     $study = study_today($ids);
@@ -37,7 +37,7 @@ route('friends.add', 'POST', function (int $me) {
     // 코드 맞히기 시도 막기
     $tries = (int)val("SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND username = '#invite' AND created_at > NOW() - INTERVAL 15 MINUTE", [client_ip()]);
     if ($tries >= 20) fail(429, '시도가 너무 많아요. 잠시 후 다시 해 주세요');
-    $u = row('SELECT id, display_name, color FROM users WHERE invite_code = ?', [$code]);
+    $u = row('SELECT id, display_name, color, avatar FROM users WHERE invite_code = ?', [$code]);
     if (!$u) {
         q("INSERT INTO login_attempts (ip, username) VALUES (?, '#invite')", [client_ip()]);
         fail(404, '이 코드를 가진 사람이 없어요. 코드를 다시 확인해 주세요');
@@ -73,6 +73,11 @@ route('friends.regen', 'POST', function (int $me) {
 route('sync', 'GET', function (int $me) {
     return [
         'unread' => (int)val('SELECT COUNT(*) FROM messages WHERE receiver_id = ? AND read_at IS NULL', [$me]),
+        'notifUnread' => notif_unread($me),
+        // after 보다 새 알림 (화면이 작은 알림창·앱 알림으로 보여 줘요)
+        'notifs' => isset($_GET['after']) ? array_map(fn($n) => ['id' => (int)$n['id'], 'kind' => $n['kind'], 'title' => $n['title'], 'body' => $n['body'], 'link' => $n['link']],
+            rows('SELECT id, kind, title, body, link FROM notifications WHERE user_id = ? AND id > ? AND read_at IS NULL ORDER BY id ASC LIMIT 10', [$me, max(0, (int)$_GET['after'])])) : [],
+        'notifLast' => (int)val('SELECT COALESCE(MAX(id), 0) FROM notifications WHERE user_id = ?', [$me]),
         'now'    => now(),
         'today'  => date('Y-m-d'),
     ];
