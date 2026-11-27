@@ -8,11 +8,11 @@ const NAV = [
   ['study', '공부', 'study'],
   ['rank', '등수', 'trophy'],
   ['messages', '메시지', 'chat'],
-  ['notifs', '알림', 'bell'],
   ['board', '보드', 'board'],
   ['draw', '그림판', 'draw'],
   ['notes', '메모장', 'note'],
   ['friends', '친구', 'users'],
+  ['notifs', '알림', 'bell'],
   ['settings', '설정', 'gear'],
 ];
 const TABS = ['calendar', 'study', 'messages', 'board', 'more'];
@@ -144,7 +144,7 @@ function paintNav(name) {
   if (name === 'day') name = 'calendar';
   const k = name === 'more' ? 'more' : name;
   for (const a of shell.side.querySelectorAll('.nav-a')) a.classList.toggle('on', a.dataset.k === k);
-  const inMore = ['draw', 'notes', 'friends', 'settings', 'more', 'rank'].includes(name);
+  const inMore = ['draw', 'notes', 'friends', 'settings', 'more', 'rank', 'notifs'].includes(name);
   for (const a of shell.tabs.querySelectorAll('.tab')) a.classList.toggle('on', a.dataset.k === name || (a.dataset.k === 'more' && inMore));
 }
 export function paintBadges() {

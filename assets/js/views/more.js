@@ -11,6 +11,7 @@ export default function mount(view) {
       h('li', null, item('#/draw', 'draw', '그림판', '친구와 같이 그리기')),
       h('li', null, item('#/notes', 'note', '메모장', '같이 쓰는 메모')),
       h('li', null, item('#/friends', 'users', '친구', '초대 코드로 친구 추가')),
+      h('li', null, item('#/notifs', 'bell', '알림', '알림 목록 · 받을 알림 고르기')),
       h('li', null, item('#/settings', 'gear', '설정', '프로필 · 로그인 방법')))),
     h('div', { class: 'card' }, h('div', { class: 'row' }, avatar(state.me, 'lg'), h('div', { class: 'grow' }, h('b', null, state.me.name), h('div', { class: 'small muted' }, state.me.username ? '@' + state.me.username : '소셜 로그인')),
       h('button', { class: 'btn', type: 'button', onclick: app.toggleTheme }, icon('moon'), '테마'))));
