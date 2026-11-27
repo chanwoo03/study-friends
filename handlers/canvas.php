@@ -21,6 +21,8 @@ function stroke_out(array $s): array {
    line/arrow 선·화살표        p:[x1,y1,x2,y2]  c  w
    rect/ellipse/diamond 네모·동그라미·마름모  p:[x1,y1,x2,y2]  c  w
               f 채우기(0 없음, 1 옅게, 2 진하게)  s 안에 쓸 글자  z 글자 크기
+   curve      곡선 연결선      p:[x1,y1,조절x,조절y,x2,y2]  c  w  a(끝에 화살촉)
+              (도형은 r 모서리 둥글기 0~200, sh 그림자 도 쓸 수 있어요)
    text       글자             p:[x,y]  s 글자  z 크기  c
    note       포스트잇         p:[x,y,너비,높이]  s 글자  c 종이색 */
 function clean_color($v, string $def): string {
@@ -43,7 +45,7 @@ function clean_text($v, int $max): string {
 function clean_stroke($d): array {
     if (!is_array($d)) fail(400, '그림 데이터가 잘못됐어요');
     $t = (string)($d['t'] ?? 'pen');
-    if (!in_array($t, ['pen', 'eraser', 'line', 'arrow', 'rect', 'ellipse', 'diamond', 'text', 'note'], true)) $t = 'pen';
+    if (!in_array($t, ['pen', 'eraser', 'line', 'arrow', 'curve', 'rect', 'ellipse', 'diamond', 'text', 'note'], true)) $t = 'pen';
     $c = clean_color($d['c'] ?? null, '#191f28');
     switch ($t) {
         case 'pen':
@@ -52,12 +54,16 @@ function clean_stroke($d): array {
         case 'line':
         case 'arrow':
             return ['t' => $t, 'c' => $c, 'w' => max(1, min(20, (int)($d['w'] ?? 3))), 'p' => clean_points($d['p'] ?? null, 4, 4)];
+        case 'curve':
+            return ['t' => 'curve', 'c' => $c, 'w' => max(1, min(20, (int)($d['w'] ?? 3))), 'a' => !empty($d['a']), 'p' => clean_points($d['p'] ?? null, 6, 6)];
         case 'rect':
         case 'ellipse':
         case 'diamond':
             $f = $d['f'] ?? 0;
             $f = $f === true ? 1 : max(0, min(2, (int)$f));
             $o = ['t' => $t, 'c' => $c, 'w' => max(1, min(20, (int)($d['w'] ?? 3))), 'f' => $f, 'p' => clean_points($d['p'] ?? null, 4, 4)];
+            if ($t === 'rect' && isset($d['r'])) $o['r'] = max(0, min(200, (int)$d['r']));
+            if (!empty($d['sh'])) $o['sh'] = true;
             $label = trim(clean_text($d['s'] ?? '', 120));
             if ($label !== '') { $o['s'] = $label; $o['z'] = max(14, min(72, (int)($d['z'] ?? 28))); }
             return $o;
@@ -162,4 +168,22 @@ route('canvas.remove', 'POST', function (int $me) {
     q('DELETE FROM strokes WHERE canvas_id = ? AND id IN (' . in_list($sids) . ')', array_merge([$c['id']], $sids));
     q('UPDATE canvases SET version = version + 1, updated_at = NOW() WHERE id = ?', [$c['id']]);
     return ['version' => (int)val('SELECT version FROM canvases WHERE id = ?', [$c['id']])];
+});
+
+/* 여러 조각을 한 번에 넣기 (템플릿용, 최대 120개) */
+route('canvas.bulk', 'POST', function (int $me) {
+    $c = load_visible('canvas', int_arg('id'), $me);
+    $list = arg('list', []);
+    if (!is_array($list) || !$list || count($list) > 120) fail(400, '넣을 그림이 잘못됐어요');
+    $clean = array_map('clean_stroke', array_values($list));
+    if ((int)val('SELECT COUNT(*) FROM strokes WHERE canvas_id = ?', [$c['id']]) + count($clean) > 20000) fail(400, '그림판이 가득 찼어요. 새 그림판을 만들어 주세요');
+    db()->beginTransaction();
+    $out = [];
+    foreach ($clean as $d) {
+        q('INSERT INTO strokes (canvas_id, user_id, data) VALUES (?, ?, ?)', [$c['id'], $me, json_encode($d, JSON_UNESCAPED_UNICODE)]);
+        $out[] = ['id' => (int)db()->lastInsertId(), 'by' => $me, 'd' => $d];
+    }
+    q('UPDATE canvases SET updated_at = NOW() WHERE id = ?', [$c['id']]);
+    db()->commit();
+    return ['strokes' => $out];
 });

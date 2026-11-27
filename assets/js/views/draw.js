@@ -1,5 +1,6 @@
 /* 그림판: 친구와 같이 그리기. 획을 하나씩 서버에 저장하고 1.5초마다 다른 사람 획을 받아 와요 */
 import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, visibilityPicker, every, setTitle, pageHead, ago, VIS_LABEL, visIcon, app } from '../core.js';
+import { TEMPLATES } from '../templates.js';
 
 export default function mount(view, route) {
   return route.params[0] ? editor(view, Number(route.params[0])) : listPage(view);
@@ -94,8 +95,22 @@ function hits(d, x, y) {
     return false;
   }
   if (d.t === 'line' || d.t === 'arrow') return segDist(x, y, d.p[0], d.p[1], d.p[2], d.p[3]) <= (d.w || 2) / 2 + tol;
+  if (d.t === 'curve') {
+    const q = curvePoints(d.p, 24);
+    for (let i = 2; i < q.length; i += 2) if (segDist(x, y, q[i - 2], q[i - 1], q[i], q[i + 1]) <= (d.w || 2) / 2 + tol) return true;
+    return false;
+  }
   const [x1, y1, x2, y2] = bbox(d);
   return x >= x1 - tol && x <= x2 + tol && y >= y1 - tol && y <= y2 + tol;
+}
+/* 곡선 위 점들 (2차 베지어) */
+function curvePoints(p, n) {
+  const out = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
+    out.push(a * p[0] + b * p[2] + c * p[4], a * p[1] + b * p[3] + c * p[5]);
+  }
+  return out;
 }
 /* 조각을 dx, dy 만큼 옮긴 새 조각 */
 function moved(d, dx, dy) {
@@ -122,6 +137,16 @@ function drawObj(ctx, d) {
       if (d.t === 'eraser') ctx.globalCompositeOperation = 'destination-out';
       if (p.length === 2) { ctx.beginPath(); ctx.arc(p[0], p[1], d.w / 2, 0, Math.PI * 2); ctx.fill(); break; }
       ctx.beginPath(); ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.stroke(); break;
+    case 'curve': {
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.quadraticCurveTo(p[2], p[3], p[4], p[5]); ctx.stroke();
+      if (d.a) {
+        const a = Math.atan2(p[5] - p[3], p[4] - p[2]), L = Math.max(16, d.w * 4.5);
+        ctx.beginPath(); ctx.moveTo(p[4], p[5]);
+        ctx.lineTo(p[4] - L * Math.cos(a - 0.45), p[5] - L * Math.sin(a - 0.45));
+        ctx.lineTo(p[4] - L * Math.cos(a + 0.45), p[5] - L * Math.sin(a + 0.45)); ctx.closePath(); ctx.fill();
+      }
+      break;
+    }
     case 'line': case 'arrow': {
       ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[2], p[3]); ctx.stroke();
       if (d.t === 'arrow') {
@@ -134,10 +159,15 @@ function drawObj(ctx, d) {
     }
     case 'rect': case 'ellipse': case 'diamond': {
       const x = Math.min(p[0], p[2]), y = Math.min(p[1], p[3]), w = Math.abs(p[2] - p[0]), hh = Math.abs(p[3] - p[1]);
-      if (d.t === 'rect') roundRect(ctx, x, y, w, hh, Math.min(16, hh / 4));
+      if (d.t === 'rect') roundRect(ctx, x, y, w, hh, d.r !== undefined ? d.r : Math.min(16, hh / 4));
       else if (d.t === 'ellipse') { ctx.beginPath(); ctx.ellipse(x + w / 2, y + hh / 2, Math.max(1, w / 2), Math.max(1, hh / 2), 0, 0, Math.PI * 2); }
       else { ctx.beginPath(); ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w, y + hh / 2); ctx.lineTo(x + w / 2, y + hh); ctx.lineTo(x, y + hh / 2); ctx.closePath(); }
       const fillMode = d.f === true ? 1 : (d.f || 0);
+      if (d.sh) {
+        // 부드러운 그림자: 흰 바탕을 한 번 깔고 그 그림자만 남겨요
+        ctx.save(); ctx.shadowColor = 'rgba(20, 30, 60, .16)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8;
+        ctx.fillStyle = fillMode === 2 ? d.c : '#ffffff'; ctx.fill(); ctx.restore();
+      }
       if (fillMode === 2) { ctx.fill(); }
       else { if (fillMode === 1) { ctx.globalAlpha = 0.14; ctx.fill(); ctx.globalAlpha = 1; } ctx.stroke(); }
       if (d.s) {
@@ -216,7 +246,7 @@ async function editor(view, id) {
     canvas.style.cursor = tool === 'select' ? 'default' : tool === 'text' ? 'text' : tool === 'eraser' ? (eraseMode === 'pixel' ? 'crosshair' : 'cell') : 'crosshair';
     hint.textContent = {
       select: '그림을 눌러 고르고 끌어서 옮겨요. 글자·포스트잇·도형은 두 번 누르면 글자를 고쳐요. Delete 키로 지워요',
-      pen: '자유롭게 그려요', eraser: eraseMode === 'pixel' ? '문지른 곳만 지워요 (굵기로 지우개 크기를 바꿔요)' : '누른 그림 하나를 통째로 지워요. 여러 개를 문질러 지울 수도 있어요',
+      pen: '자유롭게 그려요', eraser: eraseMode === 'pixel' ? '누른 채로 문지른 곳만 지워요 (굵기로 지우개 크기를 바꿔요)' : '누른 채로 문지르면 지나간 그림이 통째로 모두 지워져요',
       diamond: '끌어서 마름모를 그려요 (순서도의 판단)',
       line: '끌어서 선을 그어요', arrow: '끌어서 화살표를 그려요 (끝나는 쪽에 화살촉)',
       rect: '끌어서 네모를 그려요. 두 번 누르면 안에 글자를 쓸 수 있어요', ellipse: '끌어서 동그라미를 그려요',
@@ -235,6 +265,7 @@ async function editor(view, id) {
   let cur = null;          // 지금 그리는 중인 조각
   let drag = null;         // 옮기는 중: {id, x0, y0, d0, d}
   let erasing = null;      // 지우개로 문지르는 중: Set(id)
+  let eraseAt = null;      // 지우개가 마지막으로 지난 자리
   function fit() {
     const r = canvas.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -363,7 +394,7 @@ async function editor(view, id) {
       if (s) drag = { id: s.id, x0: x, y0: y, d0: s.d, d: s.d, movedBy: 0 };
       return;
     }
-    if (tool === 'eraser' && eraseMode === 'object') { erasing = new Set(); const s = findAt(x, y); if (s) erasing.add(s.id); redraw(); return; }
+    if (tool === 'eraser' && eraseMode === 'object') { erasing = new Set(); eraseAt = [x, y]; const s = findAt(x, y); if (s) erasing.add(s.id); redraw(); return; }
     if (tool === 'eraser') cur = { t: 'eraser', c: '#000000', w: Math.min(60, Math.max(12, width * 3)), p: [x, y] };
     else if (tool === 'pen') cur = { t: 'pen', c: color, w: width, p: [x, y] };
     else cur = { t: tool, c: color, w: Math.min(20, width), f: SHAPES.includes(tool) ? fill : 0, p: [x, y, x, y] };
@@ -373,7 +404,18 @@ async function editor(view, id) {
     if (e.pointerId !== pointerId) return;
     const [x, y] = pt(e);
     if (drag) { drag.d = moved(drag.d0, x - drag.x0, y - drag.y0); drag.movedBy = Math.abs(x - drag.x0) + Math.abs(y - drag.y0); redraw(); return; }
-    if (erasing) { const s = findAt(x, y); if (s && !erasing.has(s.id)) { erasing.add(s.id); redraw(); } return; }
+    if (erasing) {
+      // 빨리 움직여도 지나간 길 위의 그림을 놓치지 않게 6칸마다 확인해요
+      const [x0, y0] = eraseAt || [x, y], dist = Math.hypot(x - x0, y - y0), n = Math.max(1, Math.ceil(dist / 6));
+      let changed = false;
+      for (let i = 1; i <= n; i++) {
+        const s = findAt(x0 + (x - x0) * i / n, y0 + (y - y0) * i / n);
+        if (s && !erasing.has(s.id)) { erasing.add(s.id); changed = true; }
+      }
+      eraseAt = [x, y];
+      if (changed) redraw();
+      return;
+    }
     if (!cur) return;
     if (cur.t === 'pen' || cur.t === 'eraser') {
       const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
@@ -422,79 +464,36 @@ async function editor(view, id) {
   }
   document.addEventListener('keydown', onKey);
 
-  /* ===== 템플릿 ===== */
+  /* ===== 템플릿 (미리보기를 보고 골라요) ===== */
   function templates() {
-    const m = modal([h('h2', null, '템플릿 넣기'), h('p', { class: 'lead' }, '정리하기 좋은 틀을 그림판에 바로 넣어요. 넣은 뒤 상자를 두 번 눌러 글자를 고치세요'),
-      h('div', { class: 'list' },
-        h('button', { type: 'button', class: 'li', onclick: () => { m.close(); insert(mindmap()); } }, h('span', { class: 'btn icon', 'aria-hidden': 'true' }, icon('mindmap')),
-          h('div', { class: 'grow' }, h('div', { class: 't' }, '마인드맵'), h('div', { class: 's' }, '중심 주제에서 색깔별 네 가지로 뻗어요'))),
-        h('button', { type: 'button', class: 'li', onclick: () => { m.close(); insert(flow()); } }, h('span', { class: 'btn icon', 'aria-hidden': 'true' }, icon('arrow')),
-          h('div', { class: 'grow' }, h('div', { class: 't' }, '순서도'), h('div', { class: 's' }, '시작 → 단계 → 판단(예/아니오) → 끝'))),
-        h('button', { type: 'button', class: 'li', onclick: () => { m.close(); insert(compare()); } }, h('span', { class: 'btn icon', 'aria-hidden': 'true' }, icon('board')),
-          h('div', { class: 'grow' }, h('div', { class: 't' }, '비교 정리'), h('div', { class: 's' }, '두 개념을 정의·특징·장점·단점 표로 비교')))),
-      h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, '닫기'))]);
-  }
-  /* ===== 템플릿 (1600×1000 종이 기준) ===== */
-  // 마인드맵: 진하게 채운 중심 주제 → 색깔별 굵은 가지 → 옅게 채운 가지 상자 + 세부 내용 두 줄
-  function mindmap() {
-    const out = [];
-    const branches = [
-      { c: '#20c997', box: [170, 140, 510, 260], from: [650, 430], to: [510, 230], sub: [[180, 290], [180, 330]] },
-      { c: '#ff9f43', box: [1090, 140, 1430, 260], from: [950, 430], to: [1090, 230], sub: [[1100, 290], [1100, 330]] },
-      { c: '#845ef7', box: [170, 740, 510, 860], from: [650, 570], to: [510, 770], sub: [[180, 650], [180, 690]] },
-      { c: '#f2638a', box: [1090, 740, 1430, 860], from: [950, 570], to: [1090, 770], sub: [[1100, 650], [1100, 690]] },
-    ];
-    branches.forEach((b) => out.push({ t: 'line', c: b.c, w: 8, p: [...b.from, ...b.to] }));
-    out.push({ t: 'ellipse', c: '#3182f6', w: 4, f: 2, s: '중심 주제', z: 44, p: [600, 390, 1000, 610] });
-    branches.forEach((b, i) => {
-      out.push({ t: 'rect', c: b.c, w: 4, f: 1, s: `가지 ${i + 1}`, z: 32, p: b.box });
-      out.push({ t: 'text', c: '#4e5968', z: 24, s: '· 세부 내용', p: b.sub[0] });
-      out.push({ t: 'text', c: '#4e5968', z: 24, s: '· 예시나 키워드', p: b.sub[1] });
+    const grid = h('div', { class: 'tpl-grid' });
+    for (const t of TEMPLATES) {
+      const c = h('canvas', { class: 'tpl-prev', width: '480', height: '300', 'aria-hidden': 'true' });
+      const x = c.getContext('2d');
+      x.fillStyle = '#ffffff'; x.fillRect(0, 0, 480, 300);
+      x.setTransform(480 / W, 0, 0, 300 / H, 0, 0);
+      for (const d of t.build()) drawObj(x, d);
+      grid.append(h('button', { type: 'button', class: 'tpl-card', onclick: () => { m.close(); insert(t.build()); } },
+        c, h('b', null, t.name), h('span', null, t.desc)));
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {
+      // 글꼴이 늦게 오면 미리보기를 다시 그려요
+      [...grid.querySelectorAll('canvas')].forEach((c, i) => {
+        const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.fillStyle = '#ffffff'; x.fillRect(0, 0, 480, 300);
+        x.setTransform(480 / W, 0, 0, 300 / H, 0, 0); for (const d of TEMPLATES[i].build()) drawObj(x, d);
+      });
     });
-    return out;
-  }
-  // 순서도: 시작(진한 초록) → 단계 → 판단(마름모) → 예/아니오 갈래 → 끝
-  function flow() {
-    const ink = '#4e5968';
-    return [
-      { t: 'text', c: '#191f28', z: 44, s: '흐름 정리', p: [80, 70] },
-      { t: 'ellipse', c: '#20c997', w: 4, f: 2, s: '시작', z: 32, p: [60, 400, 280, 540] },
-      { t: 'arrow', c: ink, w: 4, p: [290, 470, 360, 470] },
-      { t: 'rect', c: '#3182f6', w: 4, f: 1, s: '1단계', z: 30, p: [370, 390, 640, 550] },
-      { t: 'arrow', c: ink, w: 4, p: [650, 470, 720, 470] },
-      { t: 'diamond', c: '#ff9f43', w: 4, f: 1, s: '이해했나요?', z: 26, p: [730, 350, 1010, 590] },
-      { t: 'arrow', c: ink, w: 4, p: [1020, 470, 1090, 470] },
-      { t: 'text', c: '#20c997', z: 26, s: '예', p: [1038, 420] },
-      { t: 'rect', c: '#3182f6', w: 4, f: 1, s: '2단계', z: 30, p: [1100, 390, 1340, 550] },
-      { t: 'arrow', c: ink, w: 4, p: [1350, 470, 1400, 470] },
-      { t: 'ellipse', c: '#191f28', w: 4, f: 2, s: '끝', z: 32, p: [1410, 410, 1560, 530] },
-      { t: 'arrow', c: ink, w: 4, p: [870, 600, 870, 720] },
-      { t: 'text', c: '#f04452', z: 26, s: '아니오', p: [885, 635] },
-      { t: 'rect', c: '#f04452', w: 4, f: 1, s: '다시 보기', z: 28, p: [740, 730, 1000, 860] },
-      { t: 'line', c: ink, w: 4, p: [730, 795, 505, 795] },
-      { t: 'arrow', c: ink, w: 4, p: [505, 795, 505, 560] },
-    ];
-  }
-  // 비교 정리: 진한 머리줄(A·B) + 회색 줄 이름 + 옅게 채운 칸
-  function compare() {
-    const rows = ['정의', '특징', '장점', '단점'];
-    const out = [
-      { t: 'text', c: '#191f28', z: 44, s: 'A와 B 비교', p: [80, 50] },
-      { t: 'rect', c: '#3182f6', w: 4, f: 2, s: 'A', z: 34, p: [400, 140, 940, 230] },
-      { t: 'rect', c: '#f2638a', w: 4, f: 2, s: 'B', z: 34, p: [990, 140, 1530, 230] },
-    ];
-    rows.forEach((r, i) => {
-      const y = 260 + i * 180;
-      out.push({ t: 'rect', c: '#8b95a1', w: 3, f: 2, s: r, z: 30, p: [80, y, 360, y + 150] });
-      out.push({ t: 'rect', c: '#3182f6', w: 3, f: 1, s: '두 번 눌러 쓰기', z: 22, p: [400, y, 940, y + 150] });
-      out.push({ t: 'rect', c: '#f2638a', w: 3, f: 1, s: '두 번 눌러 쓰기', z: 22, p: [990, y, 1530, y + 150] });
-    });
-    return out;
+    const m = modal([h('h2', null, '템플릿 넣기'), h('p', { class: 'lead' }, '정리하기 좋은 틀을 골라 그림판에 넣어요. 넣은 뒤 상자를 두 번 눌러 글자를 고치세요'),
+      grid, h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, '닫기'))], { wide: true });
   }
   async function insert(list) {
-    for (const d of list) { const r = await addObj(d); if (!r) break; }
-    setTool('select');
-    toast('템플릿을 넣었어요. 상자를 두 번 눌러 글자를 고쳐 보세요');
+    try {
+      const r = await api.post('canvas.bulk', { id, list });
+      for (const st of r.strokes) if (!strokes.some((x) => x.id === st.id)) strokes.push(st);
+      strokes.sort((a, b) => (a.id || 1e15) - (b.id || 1e15));
+      redraw(); setTool('select');
+      toast('템플릿을 넣었어요. 상자를 두 번 눌러 글자를 고쳐 보세요');
+    } catch (e) { errToast(e); }
   }
 
   async function undo() {

@@ -154,6 +154,25 @@ function save_members(int $planId, int $owner): void {
     foreach (array_diff($keep, $cur) as $u) q('INSERT IGNORE INTO plan_members (plan_id, user_id) VALUES (?, ?)', [$planId, $u]);
 }
 
+/* 혼자 계획 ↔ 공동 계획 바꾸기 (만든 사람만, 저장 중 한 묶음으로)
+   혼자 → 공동: 지금까지 끝낸 할 일은 만든 사람의 체크로 옮겨요
+   공동 → 혼자: 만든 사람의 체크만 할 일 완료로 남기고, 참여자와 다른 사람 체크는 지워요 */
+function convert_plan(array $plan, string $to): void {
+    $id = (int)$plan['id']; $owner = (int)$plan['owner_id'];
+    if ($to === 'group') {
+        q('INSERT IGNORE INTO task_checks (task_id, user_id, done_at) SELECT id, ?, COALESCE(done_at, NOW()) FROM plan_tasks WHERE plan_id = ? AND done = 1', [$owner, $id]);
+        q('UPDATE plan_tasks SET done = 0, done_at = NULL WHERE plan_id = ?', [$id]);
+        q("UPDATE plans SET kind = 'group', visibility = 'private' WHERE id = ?", [$id]);
+        delete_shares('plan', $id);
+    } else {
+        q('UPDATE plan_tasks t LEFT JOIN task_checks c ON c.task_id = t.id AND c.user_id = ?
+           SET t.done = (c.task_id IS NOT NULL), t.done_at = c.done_at WHERE t.plan_id = ?', [$owner, $id]);
+        q('DELETE c FROM task_checks c JOIN plan_tasks t ON t.id = c.task_id WHERE t.plan_id = ?', [$id]);
+        q('DELETE FROM plan_members WHERE plan_id = ?', [$id]);
+        q("UPDATE plans SET kind = 'personal' WHERE id = ?", [$id]);
+    }
+}
+
 route('plans.save', 'POST', function (int $me) {
     $id = int_arg('id', false);
     $title = str_arg('title', 100, true, '계획 이름');
@@ -162,6 +181,11 @@ route('plans.save', 'POST', function (int $me) {
     db()->beginTransaction();
     if ($id) {
         $plan = load_owned('plan', $id, $me);
+        $want = arg('kind', null);
+        if (($want === 'group' || $want === 'personal') && $want !== ($plan['kind'] ?? 'personal')) {
+            convert_plan($plan, $want);
+            $plan['kind'] = $want;
+        }
         if (is_group($plan)) {
             q('UPDATE plans SET title=?, color=?, goal_hours=?, goal_from=?, goal_to=? WHERE id=?', [$title, $color, $gh, $gf, $gt, $id]);
             save_members($id, $me);
