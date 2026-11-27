@@ -2,6 +2,8 @@
 import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, visibilityPicker, colorPicker, loadFriends, every, setTitle, pageHead,
   WD, parseD, parseDT, today, addDays, md, mdw, fmtDur, VIS_LABEL, visIcon, app } from '../core.js';
 import { taskLine, cheerModal } from '../shared.js';
+import { proofModal } from '../journal.js';
+import { ranked } from './rank.js';
 
 export default function mount(view, route) {
   if (route.params[0] === 'plan' && route.params[1]) return planPage(view, Number(route.params[1]));
@@ -21,6 +23,7 @@ async function dashboard(view) {
   const timerBtn = h('button', { class: 'tbtn', type: 'button', onclick: toggleTimer });
   const mates = h('div');
   const weekBox = h('div');
+  const rankBox = h('div');
   const todayBox = h('div');
   const groupBox = h('div', { class: 'plans' });
   const plansBox = h('div', { class: 'plans' });
@@ -37,6 +40,9 @@ async function dashboard(view) {
       h('div', { class: 'card' }, h('div', { class: 'row', style: { 'justify-content': 'space-between', 'margin-bottom': '12px' } },
         h('h2', { style: { margin: 0 } }, '오늘 할 일'), h('a', { class: 'btn ghost sm', href: '#/day/' + today() }, '오늘 자세히', icon('next'))), todayBox),
       h('div', { class: 'card' }, h('h2', null, '최근 7일 공부 시간'), weekBox)),
+    h('div', { class: 'card', style: { 'margin-top': '14px' } },
+      h('div', { class: 'row', style: { 'justify-content': 'space-between', 'margin-bottom': '10px' } },
+        h('h2', { style: { margin: 0 } }, icon('trophy'), ' 이번 주 친구 등수'), h('a', { class: 'btn ghost sm', href: '#/rank' }, '전체 보기', icon('next'))), rankBox),
     h('h2', { class: 'sec-title' }, icon('group'), '공동 계획'), groupBox,
     h('h2', { class: 'sec-title' }, icon('study'), '공부 계획'), plansBox);
 
@@ -60,7 +66,9 @@ async function dashboard(view) {
       setStatus(s);
       toast(on ? `오늘 ${fmtDur(s.todaySeconds)} 공부했어요` : '공부를 시작했어요');
       paintTimer();
-      if (on) loadWeek();
+      if (on) { loadWeek(); loadRank(); }
+      // 1분 넘게 공부했으면 인증을 남길지 물어봐요 (선택)
+      if (on && s.sessionId && s.sessionSeconds >= 60) proofModal({ id: s.sessionId, seconds: s.sessionSeconds, proof: null }, { onDone: () => loadRank() });
     } catch (e) { errToast(e); } finally { timerBtn.disabled = false; }
   }
   function paintMates() {
@@ -109,6 +117,17 @@ async function dashboard(view) {
     for (const t of mine) ul.append(taskLine(t, { showPlan: true, onToggled: () => loadPlans() }));
     todayBox.append(ul);
   }
+  /* 이번 주 공부 시간 1~3등 미리보기 */
+  async function loadRank() {
+    const r = await api.get('rank.get', { period: 'week' });
+    const rows = ranked(r.rows, 'seconds');
+    rankBox.replaceChildren();
+    if (rows.length < 2) { rankBox.append(h('div', { class: 'small muted' }, '친구를 추가하면 이번 주 공부 시간으로 등수를 겨룰 수 있어요')); return; }
+    const me = rows.find((x) => x.mine);
+    rankBox.append(h('div', { class: 'mini-rank' }, rows.slice(0, 3).map((x) => h('a', { href: '#/rank', class: 'mr' + (x.mine ? ' me' : '') },
+      h('span', { class: 'medal m' + x.rank }, x.rank), avatar(x.user, 'sm'), h('b', null, x.mine ? '나' : x.user.name), h('span', { class: 'small muted' }, fmtDur(x.seconds))))),
+      me && me.rank > 3 ? h('p', { class: 'small muted', style: { margin: '8px 0 0' } }, `나는 ${rows.length}명 중 ${me.rank}등 · ${fmtDur(me.seconds)}`) : '');
+  }
   async function loadPlans() {
     const r = await api.get('plans.list');
     const groups = r.plans.filter((p) => p.kind === 'group'), solo = r.plans.filter((p) => p.kind !== 'group');
@@ -121,7 +140,7 @@ async function dashboard(view) {
     for (const p of solo) plansBox.append(planCard(p));
   }
 
-  await Promise.all([loadStatus(), loadWeek(), loadToday(), loadPlans()]).catch(errToast);
+  await Promise.all([loadStatus(), loadWeek(), loadToday(), loadPlans(), loadRank()]).catch(errToast);
   const stopTick = every(10000, async () => paintTimer());
   const stopPoll = every(30000, () => Promise.all([loadStatus(), loadToday()]));
   return () => { stopTick(); stopPoll(); };

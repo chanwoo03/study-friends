@@ -158,6 +158,11 @@ CREATE TABLE IF NOT EXISTS study_sessions (
   started_at DATETIME     NOT NULL,
   ended_at   DATETIME     NULL,
   seconds    INT UNSIGNED NOT NULL DEFAULT 0,
+  proof_file  VARCHAR(80)  NULL,          -- 공부 인증 사진 (선택)
+  proof_thumb VARCHAR(80)  NULL,
+  proof_note  VARCHAR(200) NULL,
+  proof_vis   ENUM('private','friends') NULL,
+  proof_at    DATETIME     NULL,
   KEY idx_user_start (user_id, started_at),
   KEY idx_open (ended_at),
   CONSTRAINT fk_study_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -167,6 +172,7 @@ CREATE TABLE IF NOT EXISTS messages (
   id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   sender_id   INT UNSIGNED NOT NULL,
   receiver_id INT UNSIGNED NOT NULL,
+  kind        ENUM('text','sticker') NOT NULL DEFAULT 'text',
   body        TEXT         NOT NULL,
   created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   read_at     DATETIME     NULL,
@@ -174,6 +180,17 @@ CREATE TABLE IF NOT EXISTS messages (
   KEY idx_unread (receiver_id, read_at),
   CONSTRAINT fk_msg_sender   FOREIGN KEY (sender_id)   REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_msg_receiver FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 메시지 반응 (한 사람이 메시지 하나에 하나)
+CREATE TABLE IF NOT EXISTS message_reactions (
+  message_id BIGINT UNSIGNED NOT NULL,
+  user_id    INT UNSIGNED NOT NULL,
+  emoji      VARCHAR(16)  NOT NULL,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (message_id, user_id),
+  CONSTRAINT fk_mr_msg  FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+  CONSTRAINT fk_mr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 보드판: 글쓴이와 글쓴이의 친구에게 보여요

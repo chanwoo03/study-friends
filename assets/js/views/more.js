@@ -7,6 +7,7 @@ export default function mount(view) {
     h('div', { class: 'grow' }, h('div', { class: 't' }, label), sub ? h('div', { class: 's' }, sub) : null), icon('next'));
   view.append(pageHead('더보기'),
     h('div', { class: 'card' }, h('ul', { class: 'list' },
+      h('li', null, item('#/rank', 'trophy', '친구 등수', '공부 시간·할 일·연속 공부 순위')),
       h('li', null, item('#/draw', 'draw', '그림판', '친구와 같이 그리기')),
       h('li', null, item('#/notes', 'note', '메모장', '같이 쓰는 메모')),
       h('li', null, item('#/friends', 'users', '친구', '초대 코드로 친구 추가')),

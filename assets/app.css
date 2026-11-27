@@ -483,3 +483,81 @@ a.w { text-decoration: none; color: inherit; }
 }
 .lb { display: grid; place-items: center; background: #0f1115; border-radius: 16px; overflow: hidden; }
 .lb-img { display: block; max-width: 100%; max-height: 72dvh; object-fit: contain; }
+
+/* ===== 친구 등수 ===== */
+.rank-card { padding-top: 28px; }
+.podium { display: flex; justify-content: center; align-items: flex-end; gap: 14px; padding: 6px 0 4px; }
+.pod { display: flex; flex-direction: column; align-items: center; width: min(170px, 31%); }
+.pod-who { display: grid; justify-items: center; gap: 4px; padding-bottom: 10px; text-align: center; position: relative; }
+.pod-who b { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pod-val { font-size: 13px; color: var(--sub); font-variant-numeric: tabular-nums; }
+.pod .crown { position: absolute; top: -22px; font-size: 22px; }
+.pod-step { width: 100%; border-radius: 14px 14px 6px 6px; display: grid; place-items: start center; padding-top: 10px; color: #fff; font-weight: 800; font-size: 17px;
+  background: linear-gradient(180deg, var(--m1), var(--m2)); box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .08); }
+.pod-gold { --m1: #ffd45a; --m2: #f2b91c; }
+.pod-gold .pod-step { height: 118px; color: #6b4b00; }
+.pod-gold .av { box-shadow: 0 0 0 3px #f2b91c; }
+.pod-silver { --m1: #dfe5ec; --m2: #b8c2cd; }
+.pod-silver .pod-step { height: 86px; color: #4b5563; }
+.pod-silver .av { box-shadow: 0 0 0 3px #b8c2cd; }
+.pod-bronze { --m1: #f0b98c; --m2: #d08a55; }
+.pod-bronze .pod-step { height: 62px; color: #5c3010; }
+.pod-bronze .av { box-shadow: 0 0 0 3px #d08a55; }
+.pod.me .pod-who b { color: var(--accent); }
+.rank-list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 2px; }
+.rank-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 12px; }
+.rank-row.me { background: var(--accent-bg); }
+.rank-row .rk { width: 28px; text-align: center; font-weight: 800; color: var(--sub); font-variant-numeric: tabular-nums; }
+.rank-row .bar { height: 6px; margin-top: 6px; }
+.mini-rank { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mr { display: grid; justify-items: center; gap: 4px; padding: 12px 6px; border-radius: 14px; background: var(--chip); text-decoration: none; color: inherit; text-align: center; min-width: 0; }
+.mr b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr.me { background: var(--accent-bg); }
+.medal { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; }
+.medal.m1 { background: #f2b91c; color: #5c3f00; } .medal.m2 { background: #b8c2cd; color: #374151; } .medal.m3 { background: #d08a55; color: #4a250b; }
+.card h2 svg.i { vertical-align: -3px; }
+
+/* ===== 메시지: 스티커·이모지·반응 ===== */
+.sticker { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 118px; height: 118px; border-radius: 30px;
+  background: color-mix(in srgb, var(--c) 16%, #ffffff); border: 5px solid #ffffff; box-shadow: 0 2px 0 color-mix(in srgb, var(--c) 35%, #ffffff), 0 8px 18px rgba(20, 30, 60, .16);
+  transform: rotate(-3deg); color: #191f28; }
+.sticker .st-e { font-size: 46px; line-height: 1; }
+.sticker .st-t { font-size: 15px; font-weight: 800; letter-spacing: -0.03em; color: color-mix(in srgb, var(--c) 75%, #191f28); }
+.sticker.sm { width: 84px; height: 84px; border-radius: 22px; border-width: 4px; }
+.sticker.sm .st-e { font-size: 32px; } .sticker.sm .st-t { font-size: 12px; }
+.msg.mine .sticker { transform: rotate(3deg); }
+.msg .b.sticker-b { background: transparent !important; padding: 4px 6px; }
+.msg .bwrap { position: relative; display: grid; justify-items: start; min-width: 0; }
+.msg.mine .bwrap { justify-items: end; }
+.reacts { display: flex; gap: 4px; margin-top: -6px; position: relative; z-index: 1; flex-wrap: wrap; }
+.react-chip { border: 2px solid var(--card); background: var(--chip); border-radius: 999px; padding: 1px 8px; font-size: 13px; display: inline-flex; gap: 3px; align-items: center; }
+.react-chip span { font-size: 11px; color: var(--sub); font-weight: 700; }
+.react-chip.mine { background: var(--accent-bg); }
+.react-bar { position: absolute; bottom: calc(100% + 4px); display: flex; gap: 2px; background: var(--card); border-radius: 999px; padding: 4px 6px; box-shadow: var(--shadow-pop); z-index: 3; }
+.msg.mine .react-bar { right: 0; }
+.react-bar button { border: 0; background: transparent; font-size: 20px; width: 34px; height: 34px; border-radius: 50%; }
+.react-bar button:hover { background: var(--chip); transform: scale(1.12); }
+.react-btn { border: 0; background: transparent; color: var(--faint); font-size: 15px; padding: 0 2px; opacity: 0; }
+.msg:hover .react-btn, .react-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .react-btn { opacity: .7; } }
+.drawer { border-top: 1px solid var(--line); padding: 10px 2px 2px; max-height: 220px; overflow: auto; }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 2px; }
+.emoji-grid button { border: 0; background: transparent; font-size: 24px; height: 40px; border-radius: 10px; }
+.emoji-grid button:hover { background: var(--chip); }
+.sticker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; justify-items: center; }
+.sticker-grid button { border: 0; background: transparent; padding: 4px; border-radius: 16px; }
+.sticker-grid button:hover { background: var(--chip); }
+.em-ico { font-size: 20px; line-height: 1; }
+.composer .btn.ghost[aria-expanded="true"] { background: var(--accent-bg); color: var(--accent); }
+
+/* ===== 공부 인증 ===== */
+.sess-list { display: grid; gap: 8px; margin-top: 10px; }
+.sess { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--chip); }
+.proof { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; align-items: start; padding: 10px; border-radius: 14px; background: var(--chip); }
+.proof.no-pic { grid-template-columns: 1fr; }
+.proof-thumb { all: unset; cursor: zoom-in; width: 76px; height: 76px; border-radius: 10px; overflow: hidden; background: var(--line); display: block; }
+.proof-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.proof-thumb:focus-visible { outline: 2px solid var(--accent); }
+.proof-note { font-family: var(--hand); font-size: 20px; line-height: 1.3; color: var(--ink); margin-top: 4px; }
+.proof-pic { display: grid; justify-items: start; gap: 8px; }
+.proof-pic img { max-width: 100%; max-height: 240px; border-radius: 12px; object-fit: cover; }

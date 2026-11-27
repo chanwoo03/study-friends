@@ -4,7 +4,7 @@ declare(strict_types=1);
    이미 설치한 사이트도 새 기능에 필요한 표·칸이 저절로 추가돼요. 기존 데이터는 건드리지 않아요.
    새 버전에서 표 구조가 바뀌면 SCHEMA_VERSION 을 올리고 아래 sf_migrations() 에 단계를 덧붙여요. */
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function sf_col_exists(PDO $db, string $table, string $col): bool {
     $st = $db->prepare('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
@@ -88,6 +88,29 @@ function sf_migrate(PDO $db): array {
             CONSTRAINT fk_dp_note FOREIGN KEY (note_id) REFERENCES day_notes(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         $done[] = 'day_photos';
+    }
+    // v4: 공부 인증 (공부 기록에 사진·한 줄 메모, 선택)
+    if (!sf_col_exists($db, 'study_sessions', 'proof_file')) {
+        $db->exec("ALTER TABLE study_sessions ADD COLUMN proof_file VARCHAR(80) NULL, ADD COLUMN proof_thumb VARCHAR(80) NULL,
+                   ADD COLUMN proof_note VARCHAR(200) NULL, ADD COLUMN proof_vis ENUM('private','friends') NULL, ADD COLUMN proof_at DATETIME NULL");
+        $done[] = 'study_sessions.proof';
+    }
+    // v4: 메시지 스티커와 반응
+    if (!sf_col_exists($db, 'messages', 'kind')) {
+        $db->exec("ALTER TABLE messages ADD COLUMN kind ENUM('text','sticker') NOT NULL DEFAULT 'text' AFTER receiver_id");
+        $done[] = 'messages.kind';
+    }
+    if (!sf_table_exists($db, 'message_reactions')) {
+        $db->exec("CREATE TABLE message_reactions (
+            message_id BIGINT UNSIGNED NOT NULL,
+            user_id    INT UNSIGNED NOT NULL,
+            emoji      VARCHAR(16)  NOT NULL,
+            created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (message_id, user_id),
+            CONSTRAINT fk_mr_msg  FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+            CONSTRAINT fk_mr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'message_reactions';
     }
     return $done;
 }

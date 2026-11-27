@@ -47,7 +47,7 @@ if (is_array($cfg)) {
         $isMaria = stripos($ver, 'mariadb') !== false;
         $okVer = $isMaria ? version_compare($ver, '10.2', '>=') : version_compare($ver, '5.6.5', '>=');
         item('DB 버전', $okVer, $okVer ? '사용 가능' : 'MySQL 5.6.5 / MariaDB 10.2 이상이 필요해요. 호스팅 고객센터에 DB 버전을 물어보세요');
-        $need = ['users','oauth_accounts','login_attempts','friendships','shares','events','plans','plan_tasks','plan_members','task_checks','day_notes','day_photos','study_sessions','messages','posts','comments','canvases','strokes','notes'];
+        $need = ['users','oauth_accounts','login_attempts','friendships','shares','events','plans','plan_tasks','plan_members','task_checks','day_notes','day_photos','study_sessions','messages','message_reactions','posts','comments','canvases','strokes','notes'];
         require_once __DIR__ . '/lib/migrate.php';
         // 예전 버전으로 설치한 DB 는 새 표·칸을 자동으로 추가
         try { $up = sf_migrate($pdo); if ($up) item('새 버전 업그레이드', true, '추가함: ' . implode(', ', $up)); }

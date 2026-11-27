@@ -11,3 +11,5 @@ uploads/avatars/*
 !uploads/avatars/.gitkeep
 uploads/journal/*
 !uploads/journal/.htaccess
+uploads/proofs/*
+!uploads/proofs/.htaccess

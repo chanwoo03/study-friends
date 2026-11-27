@@ -1,7 +1,7 @@
 /* 날짜 화면: 그날 내 공부 계획과 공부 시간, 일정, 그리고 친구별로 펼쳐 보는 진도 */
 import { state, api, h, icon, avatar, errToast, every, setTitle, today, addDays, parseD, parseDT, mdw, fmtDur, HOLIDAYS, app } from '../core.js';
 import { editEvent, eventRow, taskLine, cheerModal } from '../shared.js';
-import { journalCard, journalView } from '../journal.js';
+import { journalCard, journalView, proofModal, proofCard } from '../journal.js';
 
 export default async function mount(view, route) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(route.params[0] || '') ? route.params[0] : today();
@@ -43,7 +43,10 @@ export default async function mount(view, route) {
     const timeBig = h('div', { class: 'big-num' }, fmtDur(liveSecs(me)));
     const timer = isToday() ? h('button', { class: 'tbtn' + (on ? ' on' : ''), type: 'button', style: { 'margin-top': '10px' }, onclick: async (e) => {
       e.currentTarget.disabled = true;
-      try { await api.post(on ? 'study.stop' : 'study.start'); await load(); } catch (ex) { errToast(ex); }
+      try {
+        const r = await api.post(on ? 'study.stop' : 'study.start'); await load();
+        if (on && r.sessionId && r.sessionSeconds >= 60) proofModal({ id: r.sessionId, seconds: r.sessionSeconds, proof: null }, { onDone: () => load() });
+      } catch (ex) { errToast(ex); }
     } }, on ? h('span', { class: 'live-dot' }) : icon('play'), on ? '공부 끝내기' : '공부 시작') : null;
     const ul = h('ul', { class: 'list' });
     for (const t of tasks) ul.append(taskLine(t, { showPlan: true, onToggled: () => { paintMineHeadOnly(); } }));
@@ -56,7 +59,9 @@ export default async function mount(view, route) {
     }
     mine.replaceChildren(
       h('div', { class: 'day-me' },
-        h('div', null, h('p', { class: 'eyebrow' }, isToday() ? '오늘 내가 공부한 시간' : '이날 내가 공부한 시간'), timeBig, timer),
+        h('div', null, h('p', { class: 'eyebrow' }, isToday() ? '오늘 내가 공부한 시간' : '이날 내가 공부한 시간'), timeBig, timer,
+          me.sessions && me.sessions.length ? h('div', { class: 'sess-list' }, h('div', { class: 'sec-label' }, '공부 기록 · 인증은 선택'),
+            me.sessions.map((x) => proofCard(x, { mine: true, onChanged: () => load() }))) : null),
         h('div', { class: 'grow' },
           h('div', { class: 'row', style: { 'justify-content': 'space-between' } }, h('h2', { style: { margin: 0 } }, '내 공부 계획'), cnt),
           bar,
@@ -93,6 +98,8 @@ export default async function mount(view, route) {
       const ul = h('ul', { class: 'list' });
       for (const t of f.tasks) ul.append(taskLine(t, { canCheck: false, showPlan: true }));
       const jn = (journal.friends.find((x) => x.user && x.user.id === u.id) || {}).note;
+      const proofs = (f.sessions || []).filter((x) => x.proof);
+      if (proofs.length) { body.append(h('div', { class: 'sess-list' }, proofs.map((x) => proofCard(x)))); toggle.querySelector('.fr-name b').append(h('span', { class: 'jr-mark', title: '공부 인증 있음' }, icon('badge'))); }
       if (jn) { body.append(journalView(jn)); toggle.querySelector('.fr-name b').append(h('span', { class: 'jr-mark', title: '하루 기록 있음' }, icon('camera'))); }
       body.append(n ? ul : h('div', { class: 'small muted' }, '이날 보여 준 할 일이 없어요'),
         h('div', { class: 'row', style: { 'margin-top': '8px' } },

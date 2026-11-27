@@ -1,5 +1,12 @@
 /* 여러 화면이 같이 쓰는 도구: 서버 요청, 화면 조각 만들기, 날짜, 알림, 모달 */
 
+/* 화면에 조각을 넣을 때 null·undefined·false 는 건너뛰어요.
+   (조건에 따라 빠지는 조각이 'null' 글자로 보이는 실수를 앱 전체에서 막아요) */
+for (const m of ['append', 'prepend', 'replaceChildren']) {
+  const orig = Element.prototype[m];
+  Element.prototype[m] = function (...kids) { return orig.apply(this, kids.filter((k) => k !== null && k !== undefined && k !== false)); };
+}
+
 export const state = { me: null, csrf: '', providers: {}, allowRegister: true, friends: [], friendsAt: 0, unread: 0 };
 
 /* ===== 서버 요청 ===== */
@@ -100,6 +107,8 @@ const P = {
   cursor: '<path d="M5 3l14 8-6 1.6L10 19z"/>',
   rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
   diamond: '<path d="M12 3l9 9-9 9-9-9z"/>',
+  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+  badge: '<circle cx="12" cy="9" r="6"/><path d="M8.5 13.5L7 22l5-3 5 3-1.5-8.5"/><path d="M9.5 9l1.8 1.8L14.8 7.3"/>',
   circle: '<ellipse cx="12" cy="12" rx="8.5" ry="7"/>',
   line: '<path d="M5 19L19 5"/>',
   arrow: '<path d="M5 19L19 5M10 5h9v9"/>',

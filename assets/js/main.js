@@ -5,6 +5,7 @@ const root = document.getElementById('root');
 const NAV = [
   ['calendar', '캘린더', 'calendar'],
   ['study', '공부', 'study'],
+  ['rank', '등수', 'trophy'],
   ['messages', '메시지', 'chat'],
   ['board', '보드', 'board'],
   ['draw', '그림판', 'draw'],
@@ -17,6 +18,7 @@ const VIEWS = {
   calendar: () => import('./views/calendar.js'),
   day: () => import('./views/day.js'),
   study: () => import('./views/study.js'),
+  rank: () => import('./views/rank.js'),
   messages: () => import('./views/messages.js'),
   board: () => import('./views/board.js'),
   draw: () => import('./views/draw.js'),
@@ -122,7 +124,7 @@ function paintNav(name) {
   if (name === 'day') name = 'calendar';
   const k = name === 'more' ? 'more' : name;
   for (const a of shell.side.querySelectorAll('.nav-a')) a.classList.toggle('on', a.dataset.k === k);
-  const inMore = ['draw', 'notes', 'friends', 'settings', 'more'].includes(name);
+  const inMore = ['draw', 'notes', 'friends', 'settings', 'more', 'rank'].includes(name);
   for (const a of shell.tabs.querySelectorAll('.tab')) a.classList.toggle('on', a.dataset.k === name || (a.dataset.k === 'more' && inMore));
 }
 export function paintBadges() {

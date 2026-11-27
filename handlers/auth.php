@@ -120,6 +120,7 @@ route('me.delete', 'POST', function (int $me) {
     if ((string)arg('confirm', '') !== '탈퇴') fail(400, '확인 칸에 ‘탈퇴’라고 적어 주세요');
     $av = val('SELECT avatar FROM users WHERE id = ?', [$me]);
     if (function_exists('journal_delete_user_files')) journal_delete_user_files($me);
+    if (function_exists('proof_delete_user_files')) proof_delete_user_files($me);
     q('DELETE FROM users WHERE id = ?', [$me]);
     if (function_exists('remove_avatar_file')) remove_avatar_file($av);
     $_SESSION = [];

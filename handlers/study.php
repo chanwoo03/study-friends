@@ -324,8 +324,9 @@ route('day.get', 'GET', function (int $me) {
     $isToday = $date === date('Y-m-d');
     $live = $isToday ? study_today(array_merge([$me], $friends)) : [];
     $users = users_by_ids(array_merge([$me], $friends));
+    $sessions = sessions_on($me, array_merge([$me], $friends), $date);
 
-    $person = function (int $u) use ($tasks, $secs, $live, $users, $me) {
+    $person = function (int $u) use ($tasks, $secs, $live, $users, $me, $sessions) {
         // 이 사람의 할 일: 그 사람의 혼자 계획 + 그 사람이 참여한 (내가 볼 수 있는) 공동 계획
         $list = [];
         foreach ($tasks as $t) {
@@ -336,7 +337,7 @@ route('day.get', 'GET', function (int $me) {
             $list[] = $x;
         }
         return ['user' => $users[$u] ?? null, 'studySeconds' => $secs[$u] ?? 0,
-                'studyingSince' => $live[$u]['studyingSince'] ?? null, 'tasks' => $list];
+                'studyingSince' => $live[$u]['studyingSince'] ?? null, 'tasks' => $list, 'sessions' => $sessions[$u] ?? []];
     };
     $friendRows = array_values(array_filter(array_map($person, $friends), fn($r) => $r['user'] !== null));
     usort($friendRows, fn($a, $b) => ($b['studySeconds'] <=> $a['studySeconds']) ?: strcmp($a['user']['name'], $b['user']['name']));
@@ -362,8 +363,10 @@ route('study.start', 'POST', function (int $me) {
     return study_today([$me])[$me] + ['now' => now()];
 });
 route('study.stop', 'POST', function (int $me) {
+    $sid = val('SELECT id FROM study_sessions WHERE user_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1', [$me]);
     q('UPDATE study_sessions SET ended_at = NOW(), seconds = LEAST(TIMESTAMPDIFF(SECOND, started_at, NOW()), ?) WHERE user_id = ? AND ended_at IS NULL', [STUDY_CAP, $me]);
-    return study_today([$me])[$me] + ['now' => now()];
+    $sec = $sid ? (int)val('SELECT seconds FROM study_sessions WHERE id = ?', [$sid]) : 0;
+    return study_today([$me])[$me] + ['now' => now(), 'sessionId' => $sid ? (int)$sid : null, 'sessionSeconds' => $sec];
 });
 route('study.status', 'GET', function (int $me) {
     return study_today([$me])[$me] + ['now' => now()];
@@ -387,4 +390,142 @@ route('study.week', 'GET', function (int $me) {
         $series[] = ['user' => $users[$u], 'mine' => $u === $me, 'seconds' => array_map(fn($d) => $by[$u][$d] ?? 0, $days)];
     }
     return ['days' => $days, 'series' => $series];
+});
+
+
+/* ===== 공부 인증 (선택) =====
+   끝낸 공부 기록에 사진 한 장과 한 줄 메모를 붙여요. 기본은 친구 공개.
+   사진은 uploads/proofs 에 있고 바깥에서 직접 못 열어요. study.proof 가 권한을 확인한 뒤 보내 줘요 */
+function proof_dir(): string { return dirname(__DIR__) . '/uploads/proofs'; }
+function proof_delete_files(array $sess): void {
+    foreach (['proof_file', 'proof_thumb'] as $k) {
+        $n = basename((string)($sess[$k] ?? ''));
+        if ($n !== '' && preg_match('/^[A-Za-z0-9_]+\.jpg$/', $n) && is_file(proof_dir() . '/' . $n)) @unlink(proof_dir() . '/' . $n);
+    }
+}
+function proof_delete_user_files(int $uid): void {
+    foreach (rows('SELECT proof_file, proof_thumb FROM study_sessions WHERE user_id = ? AND proof_file IS NOT NULL', [$uid]) as $s) proof_delete_files($s);
+}
+function proof_out(array $s, int $me): ?array {
+    if (!$s['proof_at']) return null;
+    $own = (int)$s['user_id'] === $me;
+    return ['photo' => $s['proof_file'] !== null, 'note' => (string)$s['proof_note'], 'at' => $s['proof_at'], 'visibility' => $own ? $s['proof_vis'] : null];
+}
+function session_out(array $s, int $me): array {
+    $live = $s['ended_at'] === null;
+    return ['id' => (int)$s['id'], 'start' => $s['started_at'], 'end' => $s['ended_at'], 'live' => $live,
+            'seconds' => $live ? min(STUDY_CAP, max(0, time() - strtotime($s['started_at']))) : (int)$s['seconds'], 'proof' => proof_out($s, $me)];
+}
+/* 그날의 공부 기록: 나는 전부, 친구는 친구 공개 인증이 붙은 것만 */
+function sessions_on(int $me, array $ids, string $date): array {
+    $out = array_fill_keys($ids, []);
+    if (!$ids) return $out;
+    $r = rows('SELECT * FROM study_sessions WHERE user_id IN (' . in_list($ids) . ') AND started_at >= ? AND started_at < ? + INTERVAL 1 DAY ORDER BY started_at',
+              array_merge($ids, [$date . ' 00:00:00', $date]));
+    foreach ($r as $s) {
+        $u = (int)$s['user_id'];
+        if ($u !== $me && !($s['proof_at'] && $s['proof_vis'] === 'friends')) continue;
+        $out[$u][] = session_out($s, $me);
+    }
+    return $out;
+}
+
+route('study.sessions', 'GET', function (int $me) {
+    $date = date_arg('date');
+    return ['sessions' => sessions_on($me, [$me], $date)[$me]];
+});
+
+route('study.verify', 'POST', function (int $me) {
+    $s = row('SELECT * FROM study_sessions WHERE id = ? AND user_id = ?', [int_arg('id'), $me]);
+    if (!$s) fail(404, '공부 기록을 찾을 수 없어요');
+    if ($s['ended_at'] === null) fail(400, '공부를 끝낸 뒤에 인증할 수 있어요');
+    $note = str_arg('note', 200);
+    $vis = arg('visibility', 'friends') === 'private' ? 'private' : 'friends';
+    $img = (string)arg('image', '');
+    $file = $s['proof_file']; $thumb = $s['proof_thumb'];
+    if ($img !== '') {
+        if (!function_exists('decode_jpeg')) fail(500, '사진 처리 기능을 불러오지 못했어요');
+        [$big] = decode_jpeg($img, 2 * 1024 * 1024, 2048);
+        [$small] = decode_jpeg((string)arg('thumb', ''), 300 * 1024, 640);
+        $dir = proof_dir();
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) fail(500, '사진을 저장할 폴더를 만들지 못했어요 (uploads 폴더 권한 확인)');
+        $base = $me . '_' . bin2hex(random_bytes(8));
+        if (@file_put_contents("$dir/$base.jpg", $big) === false || @file_put_contents("$dir/{$base}_t.jpg", $small) === false) fail(500, '사진을 저장하지 못했어요 (uploads 폴더 권한 확인)');
+        proof_delete_files($s);
+        $file = "$base.jpg"; $thumb = "{$base}_t.jpg";
+    }
+    if ($file === null && $note === '') fail(400, '사진이나 한 줄 메모 중 하나는 남겨 주세요');
+    q('UPDATE study_sessions SET proof_file = ?, proof_thumb = ?, proof_note = ?, proof_vis = ?, proof_at = COALESCE(proof_at, NOW()) WHERE id = ?',
+      [$file, $thumb, $note, $vis, $s['id']]);
+    return ['session' => session_out(row('SELECT * FROM study_sessions WHERE id = ?', [$s['id']]), $me)];
+});
+
+route('study.unverify', 'POST', function (int $me) {
+    $s = row('SELECT * FROM study_sessions WHERE id = ? AND user_id = ?', [int_arg('id'), $me]);
+    if (!$s) fail(404, '공부 기록을 찾을 수 없어요');
+    proof_delete_files($s);
+    q('UPDATE study_sessions SET proof_file = NULL, proof_thumb = NULL, proof_note = NULL, proof_vis = NULL, proof_at = NULL WHERE id = ?', [$s['id']]);
+    return [];
+});
+
+route('study.proof', 'GET', function (int $me) {
+    $s = row('SELECT * FROM study_sessions WHERE id = ?', [int_arg('id')]);
+    $ok = $s && $s['proof_file'] && ((int)$s['user_id'] === $me || ($s['proof_vis'] === 'friends' && is_friend($me, (int)$s['user_id'])));
+    if (!$ok) fail(404, '사진을 찾을 수 없어요');
+    $name = basename((string)(($_GET['size'] ?? '') === 'full' ? $s['proof_file'] : $s['proof_thumb']));
+    $f = proof_dir() . '/' . $name;
+    if (!preg_match('/^[A-Za-z0-9_]+\.jpg$/', $name) || !is_file($f)) fail(404, '사진 파일이 없어요');
+    $etag = '"' . md5($name . filemtime($f)) . '"';
+    header('Content-Type: image/jpeg');
+    header('Cache-Control: private, max-age=604800');
+    header('ETag: ' . $etag);
+    header('X-Content-Type-Options: nosniff');
+    if (($_SERVER['HTTP_IF_NONE_MATCH'] ?? '') === $etag) { http_response_code(304); exit; }
+    header('Content-Length: ' . filesize($f));
+    readfile($f);
+    exit;
+});
+
+/* ===== 친구 등수: 나와 내 친구들끼리만 ===== */
+function period_range(string $period): array {
+    $today = date('Y-m-d');
+    if ($period === 'today') return [$today, $today];
+    if ($period === 'month') return [date('Y-m-01'), $today];
+    return [date('Y-m-d', strtotime('monday this week')), $today];   // 이번 주: 월요일부터
+}
+route('rank.get', 'GET', function (int $me) {
+    $period = in_array(arg('period'), ['today', 'week', 'month'], true) ? arg('period') : 'week';
+    [$from, $to] = period_range($period);
+    $ids = array_merge([$me], friend_ids($me));
+    $secs = study_seconds($ids, $from, $to);
+    $live = study_today($ids);
+    $in = in_list($ids);
+    // 인증한 공부 시간
+    $proof = array_fill_keys($ids, 0);
+    foreach (rows("SELECT user_id, SUM(seconds) s FROM study_sessions WHERE user_id IN ($in) AND proof_at IS NOT NULL AND started_at >= ? AND started_at < ? + INTERVAL 1 DAY GROUP BY user_id",
+                  array_merge($ids, [$from . ' 00:00:00', $to])) as $r) $proof[(int)$r['user_id']] = (int)$r['s'];
+    // 끝낸 할 일 (혼자 계획 + 공동 계획에서 내가 체크한 것)
+    $tasks = array_fill_keys($ids, 0);
+    foreach (rows("SELECT p.owner_id u, COUNT(*) n FROM plan_tasks t JOIN plans p ON p.id = t.plan_id
+                   WHERE p.kind <> 'group' AND t.done = 1 AND p.owner_id IN ($in) AND t.done_at >= ? AND t.done_at < ? + INTERVAL 1 DAY GROUP BY p.owner_id",
+                  array_merge($ids, [$from . ' 00:00:00', $to])) as $r) $tasks[(int)$r['u']] += (int)$r['n'];
+    foreach (rows("SELECT user_id u, COUNT(*) n FROM task_checks WHERE user_id IN ($in) AND done_at >= ? AND done_at < ? + INTERVAL 1 DAY GROUP BY user_id",
+                  array_merge($ids, [$from . ' 00:00:00', $to])) as $r) $tasks[(int)$r['u']] += (int)$r['n'];
+    // 연속 공부한 날 (하루 10분 이상, 오늘 아직 안 했으면 어제까지 이어진 것도 인정)
+    $days = [];
+    foreach (rows("SELECT user_id, DATE(started_at) d, SUM(CASE WHEN ended_at IS NULL THEN LEAST(TIMESTAMPDIFF(SECOND, started_at, NOW()), ?) ELSE seconds END) s
+                   FROM study_sessions WHERE user_id IN ($in) AND started_at >= CURDATE() - INTERVAL 120 DAY GROUP BY user_id, DATE(started_at)",
+                  array_merge([STUDY_CAP], $ids)) as $r) if ((int)$r['s'] >= 600) $days[(int)$r['user_id']][$r['d']] = true;
+    $streak = [];
+    foreach ($ids as $u) {
+        $n = 0; $d = strtotime(date('Y-m-d'));
+        if (empty($days[$u][date('Y-m-d', $d)])) $d -= 86400;
+        while (!empty($days[$u][date('Y-m-d', $d)])) { $n++; $d -= 86400; }
+        $streak[$u] = $n;
+    }
+    $users = users_by_ids($ids);
+    $rows = [];
+    foreach ($ids as $u) if (isset($users[$u])) $rows[] = ['user' => $users[$u], 'mine' => $u === $me, 'seconds' => $secs[$u] ?? 0,
+        'proofSeconds' => $proof[$u], 'tasks' => $tasks[$u], 'streak' => $streak[$u], 'studying' => !empty($live[$u]['studyingSince'])];
+    return ['period' => $period, 'from' => $from, 'to' => $to, 'rows' => $rows];
 });
