@@ -1,5 +1,5 @@
 /* 메모장: 혼자 쓰거나 친구와 같이 쓰기. 자동 저장, 다른 사람이 동시에 고치면 알려 줘요 */
-import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, visibilityPicker, every, setTitle, ago, VIS_LABEL, visIcon, app } from '../core.js';
+import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, visibilityPicker, every, setTitle, ago, VIS_LABEL, visIcon, app, subNav } from '../core.js';
 
 export default async function mount(view, route) {
   const noteId = route.params[0] ? Number(route.params[0]) : null;
@@ -11,7 +11,7 @@ export default async function mount(view, route) {
       h('button', { class: 'btn primary sm', type: 'button', onclick: create }, icon('plus'), '새 메모')), listEl);
   const pane = h('div', { class: 'card note-pane' });
   layout.append(listPane, pane);
-  view.append(layout);
+  view.append(noteId ? null : subNav('share', 'notes'), layout);
 
   async function create() {
     try { const r = await api.post('notes.create', { title: '새 메모', visibility: 'private' }); app.go('notes/' + r.id); } catch (e) { errToast(e); }

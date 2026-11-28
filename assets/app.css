@@ -1274,3 +1274,22 @@ body.dc-open .page { padding-bottom: 46vh; }
 .seg button.on { background: var(--card); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .chk { display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .chk input { width: 18px; height: 18px; accent-color: #7448bd; }
+
+/* ===== 묶인 화면의 위쪽 작은 탭 (같이 쓰기 · 내 정보) ===== */
+.subnav { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 14px; border-radius: 14px; background: var(--chip); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.subnav::-webkit-scrollbar { display: none; }
+.subnav a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 10px; color: var(--sub); text-decoration: none; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.subnav a svg { width: 16px; height: 16px; }
+.subnav a:hover { color: var(--fg); }
+.subnav a.on { background: var(--card); color: var(--fg); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+.side .me-chip.on { background: var(--accent-bg); color: var(--accent); }
+.side-bell { position: relative; margin-left: auto; color: var(--faint); }
+.side-bell svg { width: 18px; height: 18px; }
+.side-bell.on { color: var(--accent); background: var(--accent-bg); }
+.side-bell + .side-toggle { margin-left: 0; }
+.side-bell .badge-n { position: absolute; top: -2px; right: -4px; margin: 0; height: 16px; min-width: 16px; font-size: 10px; padding: 0 4px; }
+html.side-min .side-bell { margin: 0; }
+@media (max-width: 899px) { .subnav { display: flex; width: 100%; } .subnav a { flex: 1; justify-content: center; padding: 8px 6px; } }
+.side .brand { gap: 8px; padding-right: 0; }
+.side .brand .nl { white-space: nowrap; }
+.side-bell, .side .side-toggle { flex: none; }

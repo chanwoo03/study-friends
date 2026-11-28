@@ -1,5 +1,5 @@
 /* 보드판: 나와 친구들이 같이 보는 글과 댓글 */
-import { state, api, h, icon, avatar, toast, errToast, confirmBtn, every, setTitle, pageHead, ago, app } from '../core.js';
+import { state, api, h, icon, avatar, toast, errToast, confirmBtn, every, setTitle, pageHead, ago, app, subNav } from '../core.js';
 
 export default async function mount(view) {
   setTitle('보드');
@@ -8,7 +8,7 @@ export default async function mount(view) {
   const postBtn = h('button', { class: 'btn primary', type: 'submit' }, '올리기');
   const feed = h('div', { class: 'feed' });
   const moreBtn = h('button', { class: 'btn', type: 'button', hidden: true, onclick: loadMore }, '이전 글 더 보기');
-  view.append(
+  view.append(subNav('share', 'board'),
     pageHead('보드', '글은 나와 내 친구들에게만 보여요. 중요한 글은 \'공지로 고정\'하면 친구들 화면 위에 떠요'),
     h('div', { class: 'feed' },
       h('form', { class: 'card', onsubmit: async (e) => {

@@ -11,13 +11,10 @@ const NAV = [
   ['grapes', '포도알', 'grape'],
   ['rank', '등수', 'trophy'],
   ['messages', '메시지', 'chat'],
-  ['board', '보드', 'board'],
-  ['draw', '그림판', 'draw'],
-  ['notes', '메모장', 'note'],
-  ['friends', '친구', 'users'],
-  ['notifs', '알림', 'bell'],
-  ['settings', '설정', 'gear'],
+  ['board', '같이 쓰기', 'board'],   // 보드·그림판·메모장
 ];
+// 묶인 화면은 메뉴에서 대표 칸에 불이 들어와요 (친구·알림 설정은 아래 내 정보)
+const NAV_GROUP = { draw: 'board', notes: 'board', day: 'calendar', friends: 'settings', notifset: 'settings' };
 const TABS = ['calendar', 'study', 'messages', 'board', 'more'];
 const VIEWS = {
   calendar: () => import('./views/calendar.js'),
@@ -32,6 +29,7 @@ const VIEWS = {
   settings: () => import('./views/settings.js'),
   more: () => import('./views/more.js'),
   notifs: () => import('./views/notifs.js'),
+  notifset: () => import('./views/notifs.js'),
   planner: () => import('./views/planner.js'),
   grapes: () => import('./views/grapes.js'),
 };
@@ -107,18 +105,18 @@ let shell = null, cleanup = null, mountSeq = 0, notices = null;
 function buildShell() {
   // 메뉴 접기: 컴퓨터는 왼쪽 메뉴가 아이콘만 남고, 휴대폰은 아래 메뉴가 작은 단추가 돼요 (기기마다 기억)
   const sideToggle = h('button', { class: 'btn ghost icon sm side-toggle', type: 'button', onclick: () => setNavMin(!navMin('side'), 'side') }, icon('sidebar'));
-  const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('span', { class: 'nl' }, '공부 친구'), sideToggle));
+  const sideBell = h('a', { class: 'btn ghost icon sm side-bell', href: '#/notifs', 'data-k': 'notifs', 'aria-label': '알림', title: '알림' }, icon('bell'), h('span', { class: 'badge-n', hidden: true }));
+  const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('span', { class: 'nl' }, '공부 친구'), sideBell, sideToggle));
   for (const [k, label, ic] of NAV) side.append(h('a', { class: 'nav-a', href: '#/' + k, 'data-k': k, title: label }, icon(ic), h('span', { class: 'nl' }, label), h('span', { class: 'badge-n', hidden: true })));
   side.append(h('div', { class: 'spacer' }));
-  const meChip = h('a', { class: 'me-chip', href: '#/settings' });
+  const meChip = h('a', { class: 'me-chip', href: '#/settings', title: '내 정보 · 친구 · 알림 설정' });
   side.append(meChip);
   const themeBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '화면 테마 바꾸기', onclick: toggleTheme });
-  const topMe = h('a', { class: 'top-me', href: '#/settings', 'aria-label': '내 프로필' });
+  const topMe = h('a', { class: 'top-me', href: '#/settings', 'aria-label': '내 정보 · 친구 · 알림 설정' });
   const top = h('header', { class: 'topbar' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'), h('div', { class: 'grow' }), themeBtn,
-    h('a', { class: 'btn ghost icon top-bell', href: '#/notifs', 'data-k': 'notifs', 'aria-label': '알림' }, icon('bell'), h('span', { class: 'badge-n', hidden: true })),
-    h('a', { class: 'btn ghost icon', href: '#/friends', 'aria-label': '친구' }, icon('users')), topMe);
+    h('a', { class: 'btn ghost icon top-bell', href: '#/notifs', 'data-k': 'notifs', 'aria-label': '알림' }, icon('bell'), h('span', { class: 'badge-n', hidden: true })), topMe);
   const tabs = h('nav', { class: 'tabbar', 'aria-label': '메뉴' });
-  const tabLabel = { calendar: ['캘린더', 'calendar'], study: ['공부', 'study'], messages: ['메시지', 'chat'], board: ['보드', 'board'], more: ['더보기', 'more'] };
+  const tabLabel = { calendar: ['캘린더', 'calendar'], study: ['공부', 'study'], messages: ['메시지', 'chat'], board: ['같이 쓰기', 'board'], more: ['더보기', 'more'] };
   for (const k of TABS) tabs.append(h('a', { class: 'tab', href: '#/' + k, 'data-k': k }, icon(tabLabel[k][1]), tabLabel[k][0], h('span', { class: 'badge-n', hidden: true })));
   tabs.append(h('button', { class: 'tab tab-fold', type: 'button', 'aria-label': '아래 메뉴 접기', onclick: () => setNavMin(true, 'tab') }, icon('down'), '접기'));
   const tabOpen = h('button', { class: 'tab-open', type: 'button', 'data-k': 'messages', 'aria-label': '아래 메뉴 펴기', onclick: () => setNavMin(false, 'tab') }, icon('menu'), h('span', { class: 'badge-n', hidden: true }));
@@ -146,10 +144,11 @@ export function paintMe() {
   shell.topMe.replaceChildren(avatar(state.me));
 }
 function paintNav(name) {
-  if (name === 'day') name = 'calendar';
-  const k = name === 'more' ? 'more' : name;
-  for (const a of shell.side.querySelectorAll('.nav-a')) a.classList.toggle('on', a.dataset.k === k);
-  const inMore = ['draw', 'notes', 'friends', 'settings', 'more', 'rank', 'notifs', 'planner', 'grapes'].includes(name);
+  name = NAV_GROUP[name] || name;
+  for (const a of shell.side.querySelectorAll('.nav-a')) a.classList.toggle('on', a.dataset.k === name);
+  shell.meChip.classList.toggle('on', name === 'settings');
+  shell.side.querySelector('.side-bell').classList.toggle('on', name === 'notifs');
+  const inMore = ['settings', 'more', 'rank', 'notifs', 'planner', 'grapes'].includes(name);
   for (const a of shell.tabs.querySelectorAll('.tab')) a.classList.toggle('on', a.dataset.k === name || (a.dataset.k === 'more' && inMore));
 }
 export function paintBadges() {

@@ -304,6 +304,15 @@ export function colorPicker(initial = COLORS[0]) {
 export function pageHead(title, sub, ...actions) {
   return h('div', { class: 'head' }, h('div', null, h('h1', null, title), sub ? h('p', { class: 'sub' }, sub) : null), actions.length ? h('div', { class: 'row' }, actions) : null);
 }
+/* 비슷한 화면을 하나로 묶는 위쪽 작은 탭: 같이 쓰기(보드·그림판·메모장), 내 정보(프로필·친구·알림 설정) */
+const SUBNAV = {
+  share: ['같이 쓰기', [['board', '보드', 'board'], ['draw', '그림판', 'draw'], ['notes', '메모장', 'note']]],
+  me: ['내 정보', [['settings', '프로필', 'gear'], ['friends', '친구', 'users'], ['notifset', '알림 설정', 'bell']]],
+};
+export function subNav(group, active) {
+  const [label, items] = SUBNAV[group];
+  return h('nav', { class: 'subnav', 'aria-label': label }, items.map(([k, text, ic]) => h('a', { href: '#/' + k, class: k === active ? 'on' : null, 'aria-current': k === active ? 'page' : null }, icon(ic), text)));
+}
 export function setTitle(t) { document.title = t ? `${t} · 공부 친구` : '공부 친구'; }
 
 /* 화면이 보이는 동안만 반복 (다른 화면으로 가면 stop) */

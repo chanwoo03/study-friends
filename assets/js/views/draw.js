@@ -1,5 +1,5 @@
 /* 그림판: 친구와 같이 그리기. 획을 하나씩 서버에 저장하고 1.5초마다 다른 사람 획을 받아 와요 */
-import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, visibilityPicker, every, setTitle, pageHead, ago, VIS_LABEL, visIcon, app } from '../core.js';
+import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, visibilityPicker, every, setTitle, pageHead, ago, VIS_LABEL, visIcon, app, subNav } from '../core.js';
 import { TEMPLATES } from '../templates.js';
 
 export default function mount(view, route) {
@@ -31,7 +31,7 @@ function settingsModal(c, onSaved) {
 async function listPage(view) {
   setTitle('그림판');
   const box = h('div', { class: 'thumbs' });
-  view.append(pageHead('그림판', '친구와 같은 그림판에 동시에 그릴 수 있어요', h('button', { class: 'btn primary', type: 'button', onclick: () => settingsModal(null) }, icon('plus'), '새 그림판')), box);
+  view.append(subNav('share', 'draw'), pageHead('그림판', '친구와 같은 그림판에 동시에 그릴 수 있어요', h('button', { class: 'btn primary', type: 'button', onclick: () => settingsModal(null) }, icon('plus'), '새 그림판')), box);
   const r = await api.get('canvas.list');
   if (!r.canvases.length) box.append(h('div', { class: 'card empty', style: { 'grid-column': '1/-1' } }, '아직 그림판이 없어요. ‘새 그림판’을 눌러 시작하세요'));
   for (const c of r.canvases) box.append(h('a', { class: 'plan-card', href: '#/draw/' + c.id },

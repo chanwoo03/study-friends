@@ -1,10 +1,10 @@
 /* 설정: 프로필, 로그인 방법(아이디·카카오·구글), 테마, 로그아웃, 탈퇴 */
-import { state, api, h, icon, avatar, toast, errToast, confirmBtn, setTitle, pageHead, colorPicker, app } from '../core.js';
+import { state, api, h, icon, avatar, toast, errToast, confirmBtn, setTitle, pageHead, colorPicker, app, subNav } from '../core.js';
 
 const PROVIDER = { kakao: '카카오', google: 'Google' };
 
 export default function mount(view, route) {
-  setTitle('설정');
+  setTitle('내 정보');
   const me = state.me;
   const notice = route.query.ok === 'linked' ? h('div', { class: 'banner ok', style: { 'margin-bottom': '14px' } }, '로그인 방법을 연결했어요')
     : route.query.err ? h('div', { class: 'banner', style: { 'margin-bottom': '14px' } }, route.query.err) : null;
@@ -91,7 +91,7 @@ export default function mount(view, route) {
           try { await api.post('me.delete', { confirm: del.value.trim(), password: delPw ? delPw.value : '' }); state.me = null; app.go('login'); app.render(); } catch (e) { errToast(e); }
         })))));
 
-  view.append(pageHead('설정', null), notice,
+  view.append(subNav('me', 'settings'), pageHead('내 정보', '프로필 · 로그인 방법 · 화면'), notice,
     h('div', { class: 'grid2' }, profile, pw), h('div', { class: 'grid2', style: { 'margin-top': '14px' } }, social, etc));
 }
 

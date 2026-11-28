@@ -1,5 +1,5 @@
 /* 친구: 내 초대 코드, 코드로 친구 추가, 친구 목록 */
-import { state, api, h, icon, avatar, toast, errToast, confirmBtn, setTitle, pageHead, loadFriends, fmtDur, ago, every } from '../core.js';
+import { state, api, h, icon, avatar, toast, errToast, confirmBtn, setTitle, pageHead, loadFriends, fmtDur, ago, every, subNav } from '../core.js';
 
 export default async function mount(view, route) {
   setTitle('친구');
@@ -19,7 +19,7 @@ export default async function mount(view, route) {
   const addErr = h('div', { class: 'err', role: 'alert' });
   const addBtn = h('button', { class: 'btn primary', type: 'submit' }, icon('plus'), '친구 추가');
 
-  view.append(
+  view.append(subNav('me', 'friends'),
     pageHead('친구', '친구가 된 사람끼리만 일정·계획·메시지를 나눠요'),
     route.query.welcome ? h('div', { class: 'banner ok', style: { 'margin-bottom': '14px' } }, '가입을 축하해요! 친구에게 내 초대 코드를 알려 주거나, 친구의 코드를 아래에 넣어 친구를 맺으세요.') : null,
     h('div', { class: 'grid2' },

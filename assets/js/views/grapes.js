@@ -24,11 +24,11 @@ function boardEl(b, { anim = -1, small = false } = {}) {
   const people = new Map(b.people.map((u) => [u.id, u]));
   const st = LAYOUT[b.style] ? b.style : 4, spots = LAYOUT[st];
   const marks = b.marks || [];
-  const el = h('div', { class: `gp-board s${st}` + (small ? ' sm' : '') + (b.completedAt ? ' done' : ''), style: { aspectRatio: `${SIZE[st][0]} / ${SIZE[st][1]}` } },
+  const el = h('div', { class: `gp-board s${st}` + (small ? ' sm' : '') + (b.completedAt ? ' done' : ''), style: { 'aspect-ratio': `${SIZE[st][0]} / ${SIZE[st][1]}` } },
     h('img', { class: 'gp-img', src: `assets/grapes/board${st}.webp`, alt: `${b.title} 포도알 판, ${b.total}알 중 ${b.count}알`, draggable: 'false', loading: small ? 'lazy' : 'eager' }));
   spots.slice(0, b.count).forEach(([x, y, r, eh, ew], i) => {
     const m = marks[i], u = m && people.get(m.user);
-    el.append(h('span', { class: 'gp-fill' + (i === anim ? ' pop' : ''), style: ew ? { left: `${x}%`, top: `${y}%`, width: `${ew}%`, height: `${eh}%`, aspectRatio: 'auto' } : { left: `${x}%`, top: `${y}%`, width: `${r * 2 * 0.9}%` },
+    el.append(h('span', { class: 'gp-fill' + (i === anim ? ' pop' : ''), style: ew ? { left: `${x}%`, top: `${y}%`, width: `${ew}%`, height: `${eh}%`, 'aspect-ratio': 'auto' } : { left: `${x}%`, top: `${y}%`, width: `${r * 2 * 0.9}%` },
       title: m ? `${u ? u.name : '친구'} · ${md(m.day)}${m.note ? ' · ' + m.note : ''}` : '' },
       !small && u && b.people.length > 1 ? h('b', null, Array.from(u.name)[0]) : null));
   });
