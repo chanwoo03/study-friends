@@ -4,7 +4,7 @@ declare(strict_types=1);
    이미 설치한 사이트도 새 기능에 필요한 표·칸이 저절로 추가돼요. 기존 데이터는 건드리지 않아요.
    새 버전에서 표 구조가 바뀌면 SCHEMA_VERSION 을 올리고 아래 sf_migrations() 에 단계를 덧붙여요. */
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 function sf_col_exists(PDO $db, string $table, string $col): bool {
     $st = $db->prepare('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
@@ -170,6 +170,71 @@ function sf_migrate(PDO $db): array {
     if (!sf_col_exists($db, 'notif_devices', 'fcm_token')) {
         $db->exec("ALTER TABLE notif_devices ADD COLUMN fcm_token VARCHAR(255) NULL");
         $done[] = 'notif_devices.fcm_token';
+    }
+    // v8: 학습 플래너
+    if (!sf_col_exists($db, 'users', 'planner_vis')) {
+        $db->exec("ALTER TABLE users ADD COLUMN planner_vis ENUM('private','friends') NOT NULL DEFAULT 'private'");
+        $done[] = 'users.planner_vis';
+    }
+    if (!sf_col_exists($db, 'study_sessions', 'subject_id')) {
+        $db->exec("ALTER TABLE study_sessions ADD COLUMN subject_id INT UNSIGNED NULL");
+        $done[] = 'study_sessions.subject_id';
+    }
+    if (!sf_table_exists($db, 'planner_subjects')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS planner_subjects (
+  id       INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id  INT UNSIGNED NOT NULL,
+  name     VARCHAR(20)  NOT NULL,
+  color    CHAR(7)      NOT NULL,
+  sort     INT          NOT NULL DEFAULT 0,
+  KEY idx_user (user_id),
+  CONSTRAINT fk_ps_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'planner_subjects';
+    }
+    if (!sf_table_exists($db, 'planner_days')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS planner_days (
+  user_id    INT UNSIGNED NOT NULL,
+  day        DATE         NOT NULL,
+  goal_min   SMALLINT UNSIGNED NULL,
+  mood       TINYINT UNSIGNED NULL,
+  rating     TINYINT UNSIGNED NULL,
+  reflection VARCHAR(500) NOT NULL DEFAULT '',
+  blocks     TEXT         NULL,
+  updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, day),
+  CONSTRAINT fk_pd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'planner_days';
+    }
+    if (!sf_table_exists($db, 'planner_todos')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS planner_todos (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  day        DATE         NOT NULL,
+  text       VARCHAR(120) NOT NULL,
+  done       TINYINT(1)   NOT NULL DEFAULT 0,
+  subject_id INT UNSIGNED NULL,
+  sort       INT          NOT NULL DEFAULT 0,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user_day (user_id, day),
+  CONSTRAINT fk_pt_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pt_subj FOREIGN KEY (subject_id) REFERENCES planner_subjects(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'planner_todos';
+    }
+    if (!sf_table_exists($db, 'ddays')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS ddays (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  title      VARCHAR(40)  NOT NULL,
+  day        DATE         NOT NULL,
+  color      CHAR(7)      NOT NULL DEFAULT '#f04452',
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user_day (user_id, day),
+  CONSTRAINT fk_dd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'ddays';
     }
     return $done;
 }

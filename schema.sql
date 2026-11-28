@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   last_seen     DATETIME     NULL,
   notif_off     VARCHAR(80)  NOT NULL DEFAULT '',
+  planner_vis   ENUM('private','friends') NOT NULL DEFAULT 'private',
   UNIQUE KEY uq_username (username),
   UNIQUE KEY uq_invite (invite_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -164,6 +165,7 @@ CREATE TABLE IF NOT EXISTS study_sessions (
   proof_note  VARCHAR(200) NULL,
   proof_vis   ENUM('private','friends') NULL,
   proof_at    DATETIME     NULL,
+  subject_id  INT UNSIGNED NULL,          -- 플래너 과목 (선택)
   KEY idx_user_start (user_id, started_at),
   KEY idx_open (ended_at),
   CONSTRAINT fk_study_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -289,4 +291,53 @@ CREATE TABLE IF NOT EXISTS notif_devices (
   UNIQUE KEY uq_token (token_hash),
   KEY idx_user (user_id),
   CONSTRAINT fk_nd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 학습 플래너 (v8)
+CREATE TABLE IF NOT EXISTS planner_subjects (
+  id       INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id  INT UNSIGNED NOT NULL,
+  name     VARCHAR(20)  NOT NULL,
+  color    CHAR(7)      NOT NULL,
+  sort     INT          NOT NULL DEFAULT 0,
+  KEY idx_user (user_id),
+  CONSTRAINT fk_ps_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS planner_days (
+  user_id    INT UNSIGNED NOT NULL,
+  day        DATE         NOT NULL,
+  goal_min   SMALLINT UNSIGNED NULL,
+  mood       TINYINT UNSIGNED NULL,
+  rating     TINYINT UNSIGNED NULL,
+  reflection VARCHAR(500) NOT NULL DEFAULT '',
+  blocks     TEXT         NULL,
+  updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, day),
+  CONSTRAINT fk_pd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS planner_todos (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  day        DATE         NOT NULL,
+  text       VARCHAR(120) NOT NULL,
+  done       TINYINT(1)   NOT NULL DEFAULT 0,
+  subject_id INT UNSIGNED NULL,
+  sort       INT          NOT NULL DEFAULT 0,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user_day (user_id, day),
+  CONSTRAINT fk_pt_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pt_subj FOREIGN KEY (subject_id) REFERENCES planner_subjects(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ddays (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  title      VARCHAR(40)  NOT NULL,
+  day        DATE         NOT NULL,
+  color      CHAR(7)      NOT NULL DEFAULT '#f04452',
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user_day (user_id, day),
+  CONSTRAINT fk_dd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

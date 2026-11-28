@@ -389,8 +389,14 @@ route('day.get', 'GET', function (int $me) {
 /* ===== 공부 타이머 ===== */
 route('study.start', 'POST', function (int $me) {
     close_stale_sessions();
-    if (!val('SELECT id FROM study_sessions WHERE user_id = ? AND ended_at IS NULL', [$me])) {
-        q('INSERT INTO study_sessions (user_id, started_at) VALUES (?, NOW())', [$me]);
+    // 과목(플래너 타임테이블 색)은 고르지 않아도 돼요
+    $sid = int_arg('subject', false);
+    if ($sid && !val('SELECT id FROM planner_subjects WHERE id = ? AND user_id = ?', [$sid, $me])) $sid = null;
+    $open = val('SELECT id FROM study_sessions WHERE user_id = ? AND ended_at IS NULL', [$me]);
+    if (!$open) {
+        q('INSERT INTO study_sessions (user_id, started_at, subject_id) VALUES (?, NOW(), ?)', [$me, $sid ?: null]);
+    } elseif ($sid) {
+        q('UPDATE study_sessions SET subject_id = ? WHERE id = ?', [$sid, $open]);   // 공부 중에 과목 바꾸기
     }
     return study_today([$me])[$me] + ['now' => now()];
 });

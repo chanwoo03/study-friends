@@ -117,6 +117,7 @@ const P = {
   back: '<path d="M15 5l-7 7 7 7"/>',
   next: '<path d="M9 5l7 7-7 7"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  planner: '<rect x="5.5" y="3" width="14.5" height="18" rx="2.5"/><path d="M5.5 7.5H3.5M5.5 12H3.5M5.5 16.5H3.5M10 8h6M10 12h6M10 16h3.5"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   down: '<path d="M5 9l7 7 7-7"/>',
   sidebar: '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/>',
