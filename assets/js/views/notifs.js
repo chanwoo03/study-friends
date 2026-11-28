@@ -71,7 +71,7 @@ function pushRow(repaint) {
   const st = pushStatus();
   if (st === 'unavailable') return null;
   const msg = {
-    'ios-home': '아이폰은 Safari 아래 공유 버튼 → ‘홈 화면에 추가’로 설치한 뒤, 홈 화면의 공부 친구 아이콘으로 열면 푸시를 켤 수 있어요 (iOS 16.4 이상)',
+    'ios-home': '아이폰은 Safari 아래 공유 버튼 → ‘홈 화면에 추가’로 설치한 뒤, 홈 화면의 캘버디 아이콘으로 열면 푸시를 켤 수 있어요 (iOS 16.4 이상)',
     unsupported: '이 브라우저는 푸시를 지원하지 않아요',
     denied: '알림이 차단돼 있어요. 휴대폰·브라우저 설정에서 이 사이트 알림을 허용해 주세요',
     on: '앱을 꺼도 이 기기로 바로 알림이 와요',

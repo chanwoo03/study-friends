@@ -1,6 +1,6 @@
 {
-  "name": "공부 친구",
-  "short_name": "공부 친구",
+  "name": "캘버디",
+  "short_name": "캘버디",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

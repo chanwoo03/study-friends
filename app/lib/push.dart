@@ -24,7 +24,7 @@ Future<bool> initFirebase() async {
 Future<void> _showFromData(Map<String, dynamic> d) async {
   final id = int.tryParse('${d['id'] ?? ''}') ?? 0;
   if (id <= 0) return;
-  await showNotif(id: id, kind: '${d['kind'] ?? ''}', title: '${d['title'] ?? '공부 친구'}', body: '${d['body'] ?? ''}', link: '${d['link'] ?? ''}');
+  await showNotif(id: id, kind: '${d['kind'] ?? ''}', title: '${d['title'] ?? '캘버디'}', body: '${d['body'] ?? ''}', link: '${d['link'] ?? ''}');
 }
 
 /// 앱이 꺼져 있거나 뒤에 있을 때 푸시가 오면 안드로이드가 부르는 곳

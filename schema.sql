@@ -1,4 +1,4 @@
--- 공부 친구 (Study Friends) 데이터베이스 구조
+-- 캘버디 (CalBuddy) 데이터베이스 구조
 -- phpMyAdmin 등에서 이 파일을 그대로 가져오기(Import) 하세요. MySQL 5.7+ / MariaDB 10.3+
 
 SET NAMES utf8mb4;

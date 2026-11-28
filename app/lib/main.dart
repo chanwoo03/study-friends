@@ -1,4 +1,4 @@
-// 공부 친구 앱: 웹사이트(공부 친구)를 그대로 감싸서 보여 주는 앱이에요.
+// 캘버디 앱: 웹사이트(캘버디)를 그대로 감싸서 보여 주는 앱이에요.
 // - 주소는 빌드할 때 바꿀 수 있어요:  flutter build apk --dart-define=APP_URL=http://내도메인/study_friend/
 // - 파일 고르기, 파일 내려받기(저장·공유 창), 뒤로 가기, 인터넷 끊김 화면, 휴대폰 알림을 처리해요.
 import 'dart:convert';
@@ -48,7 +48,7 @@ class StudyFriendsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '공부 친구',
+      title: '캘버디',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: const Color(0xFF3182F6), useMaterial3: true),
       darkTheme: ThemeData(colorSchemeSeed: const Color(0xFF3182F6), brightness: Brightness.dark, useMaterial3: true),

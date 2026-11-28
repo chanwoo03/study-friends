@@ -313,7 +313,7 @@ export function subNav(group, active) {
   const [label, items] = SUBNAV[group];
   return h('nav', { class: 'subnav', 'aria-label': label }, items.map(([k, text, ic]) => h('a', { href: '#/' + k, class: k === active ? 'on' : null, 'aria-current': k === active ? 'page' : null }, icon(ic), text)));
 }
-export function setTitle(t) { document.title = t ? `${t} · 공부 친구` : '공부 친구'; }
+export function setTitle(t) { document.title = t ? `${t} · 캘버디` : '캘버디'; }
 
 /* 화면이 보이는 동안만 반복 (다른 화면으로 가면 stop) */
 export function every(ms, fn) {

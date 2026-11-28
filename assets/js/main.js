@@ -93,7 +93,7 @@ function authScreen(query) {
   else if (!state.providers.kakao && social[0]) social[0].append('Google로 계속하기');
 
   root.replaceChildren(h('div', { class: 'auth-wrap' }, h('div', { class: 'auth' },
-    h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'),
+    h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '캘버디'),
     h('p', { class: 'tag' }, '친구끼리만 보는 캘린더 · 공부 계획 · 메시지'),
     h('div', { class: 'card' }, form, social.length ? [h('div', { class: 'or' }, '또는'), h('div', { class: 'social' }, social)] : null),
   )));
@@ -106,14 +106,14 @@ function buildShell() {
   // 메뉴 접기: 컴퓨터는 왼쪽 메뉴가 아이콘만 남고, 휴대폰은 아래 메뉴가 작은 단추가 돼요 (기기마다 기억)
   const sideToggle = h('button', { class: 'btn ghost icon sm side-toggle', type: 'button', onclick: () => setNavMin(!navMin('side'), 'side') }, icon('sidebar'));
   const sideBell = h('a', { class: 'btn ghost icon sm side-bell', href: '#/notifs', 'data-k': 'notifs', 'aria-label': '알림', title: '알림' }, icon('bell'), h('span', { class: 'badge-n', hidden: true }));
-  const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('span', { class: 'nl' }, '공부 친구'), sideBell, sideToggle));
+  const side = h('aside', { class: 'side', 'aria-label': '메뉴' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), h('span', { class: 'nl' }, '캘버디'), sideBell, sideToggle));
   for (const [k, label, ic] of NAV) side.append(h('a', { class: 'nav-a', href: '#/' + k, 'data-k': k, title: label }, icon(ic), h('span', { class: 'nl' }, label), h('span', { class: 'badge-n', hidden: true })));
   side.append(h('div', { class: 'spacer' }));
   const meChip = h('a', { class: 'me-chip', href: '#/settings', title: '내 정보 · 친구 · 알림 설정' });
   side.append(meChip);
   const themeBtn = h('button', { class: 'btn ghost icon', type: 'button', 'aria-label': '화면 테마 바꾸기', onclick: toggleTheme });
   const topMe = h('a', { class: 'top-me', href: '#/settings', 'aria-label': '내 정보 · 친구 · 알림 설정' });
-  const top = h('header', { class: 'topbar' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '공부 친구'), h('div', { class: 'grow' }), themeBtn,
+  const top = h('header', { class: 'topbar' }, h('div', { class: 'brand' }, h('img', { class: 'logo', src: 'icon.svg', alt: '' }), '캘버디'), h('div', { class: 'grow' }), themeBtn,
     h('a', { class: 'btn ghost icon top-bell', href: '#/notifs', 'data-k': 'notifs', 'aria-label': '알림' }, icon('bell'), h('span', { class: 'badge-n', hidden: true })), topMe);
   const tabs = h('nav', { class: 'tabbar', 'aria-label': '메뉴' });
   const tabLabel = { calendar: ['캘린더', 'calendar'], study: ['공부', 'study'], messages: ['메시지', 'chat'], board: ['같이 쓰기', 'board'], more: ['더보기', 'more'] };

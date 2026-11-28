@@ -1,4 +1,4 @@
-# 공부 친구 안드로이드 앱(APK) 만들기
+# 캘버디 안드로이드 앱(APK) 만들기
 # - main 에 앱(app/) 코드가 바뀌어 올라오면 저절로 만들어요.
 # - 직접 만들려면: GitHub 저장소 → Actions → "안드로이드 앱 만들기" → Run workflow
 # - 다 만들면 Releases 에 APK 가 올라가요. 항상 최신 APK 를 받는 주소:
@@ -61,9 +61,9 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk study-friends.apk
           gh release create "$TAG" study-friends.apk \
             --target "$GITHUB_SHA" \
-            --title "공부 친구 앱 ($TAG)" \
+            --title "캘버디 앱 ($TAG)" \
             --latest \
-            --notes "공부 친구 안드로이드 앱이에요. 아래 study-friends.apk 를 받아 휴대폰에서 설치하세요.
+            --notes "캘버디 안드로이드 앱이에요. 아래 study-friends.apk 를 받아 휴대폰에서 설치하세요.
 
           - 설치할 때 '출처를 알 수 없는 앱'을 허용해 주세요. Play 프로텍트 경고는 '무시하고 설치'를 누르면 돼요.
           - 아이디/비밀번호 또는 카카오로 로그인하세요. (구글 로그인은 앱 안에서 안 돼요)

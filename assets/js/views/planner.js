@@ -512,7 +512,7 @@ async function bookPage(view, ym, u) {
       bkStat('할 일 끝냄', (() => { const a = days.reduce((s, x) => s + x.todoTotal, 0); return a ? `${Math.round((days.reduce((s, x) => s + x.todoDone, 0) / a) * 100)}%` : '—'; })())),
     h('div', { class: 'pd-sec' }, lbl('과목별 시간'), subTotals(allSlots, subs)),
     h('p', { class: 'bk-note pd-hand' }, filled.length ? '이번 달도 수고했어요. 다음 장부터 하루하루가 이어져요' : '아직 기록이 없어요. 하루 플래너를 쓰면 여기부터 한 장씩 쌓여요')));
-  const backCover = () => h('div', { class: `bk-page cv cv-back cv-${cover.style}` }, h('span', { class: 'cv-pat', 'aria-hidden': 'true' }), h('span', { class: 'cv-back-t' }, '공부 친구'));
+  const backCover = () => h('div', { class: `bk-page cv cv-back cv-${cover.style}` }, h('span', { class: 'cv-pat', 'aria-hidden': 'true' }), h('span', { class: 'cv-back-t' }, '캘버디'));
   const pages = [() => coverEl(Y, M, who, cover, `${fmtMin(total)} · ${filled.length}일의 기록`), calendarPage, statsPage];
   const cache = new Map();
   for (const x of filled) { const get = (i) => { if (!cache.has(x.date)) cache.set(x.date, staticSpread(x, subs, { ...opts, theme: opts.theme, ddays: r.ddays.filter((y) => y.day >= x.date) })); return cache.get(x.date)[i]; }; pages.push(() => get(0), () => get(1)); }
