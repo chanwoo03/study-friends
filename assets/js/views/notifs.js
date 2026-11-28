@@ -2,13 +2,14 @@
 import { state, api, h, icon, avatar, ago, setTitle, pageHead, errToast, toast, app, every, today } from '../core.js';
 import { pushStatus, enablePush, disablePush } from '../webpush.js';
 
-const KIND_ICON = { message: 'chat', event: 'calendar', plan: 'study', share: 'note', board: 'board' };
+const KIND_ICON = { message: 'chat', event: 'calendar', plan: 'study', share: 'note', board: 'board', grape: 'grape' };
 const KIND_HINT = {
   message: '친구가 보낸 메시지',
   event: '친구가 나에게 보이는 일정을 등록하거나 바꿨을 때',
   plan: '공동 계획에 초대되거나, 다른 참여자가 할 일을 고쳤을 때',
   share: '같이 쓰는 메모·그림판을 다른 사람이 고쳤을 때 (내 혼자 것은 알리지 않아요)',
   board: '내 글에 댓글이 달리거나 친구가 공지를 올렸을 때',
+  grape: '포도알 판에 초대되거나, 같이 하는 친구가 칠했거나, 다 채웠을 때',
 };
 
 export default async function mount(view) {

@@ -8,6 +8,7 @@ const NAV = [
   ['calendar', '캘린더', 'calendar'],
   ['study', '공부', 'study'],
   ['planner', '플래너', 'planner'],
+  ['grapes', '포도알', 'grape'],
   ['rank', '등수', 'trophy'],
   ['messages', '메시지', 'chat'],
   ['board', '보드', 'board'],
@@ -32,6 +33,7 @@ const VIEWS = {
   more: () => import('./views/more.js'),
   notifs: () => import('./views/notifs.js'),
   planner: () => import('./views/planner.js'),
+  grapes: () => import('./views/grapes.js'),
 };
 
 /* #/notes/3?x=1 → {name:'notes', params:['3'], query:{x:'1'}} */
@@ -147,7 +149,7 @@ function paintNav(name) {
   if (name === 'day') name = 'calendar';
   const k = name === 'more' ? 'more' : name;
   for (const a of shell.side.querySelectorAll('.nav-a')) a.classList.toggle('on', a.dataset.k === k);
-  const inMore = ['draw', 'notes', 'friends', 'settings', 'more', 'rank', 'notifs', 'planner'].includes(name);
+  const inMore = ['draw', 'notes', 'friends', 'settings', 'more', 'rank', 'notifs', 'planner', 'grapes'].includes(name);
   for (const a of shell.tabs.querySelectorAll('.tab')) a.classList.toggle('on', a.dataset.k === name || (a.dataset.k === 'more' && inMore));
 }
 export function paintBadges() {

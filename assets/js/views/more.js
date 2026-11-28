@@ -8,6 +8,7 @@ export default function mount(view) {
   view.append(pageHead('더보기'),
     h('div', { class: 'card' }, h('ul', { class: 'list' },
       h('li', null, item('#/planner', 'planner', '학습 플래너', '타임테이블 · 오늘 할 일 · D-day · 한 달 플래너 북')),
+      h('li', null, item('#/grapes', 'grape', '포도알 판', '목표를 이룰 때마다 한 알씩, 다 채우면 배지')),
       h('li', null, item('#/rank', 'trophy', '친구 등수', '공부 시간·할 일·연속 공부 순위')),
       h('li', null, item('#/draw', 'draw', '그림판', '친구와 같이 그리기')),
       h('li', null, item('#/notes', 'note', '메모장', '같이 쓰는 메모')),

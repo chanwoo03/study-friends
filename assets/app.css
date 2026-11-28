@@ -1186,3 +1186,84 @@ body.dc-open .page { padding-bottom: 46vh; }
 
 .theme-cute .pd-right > .pd-in > .pd-sec:first-child .pd-cnt { margin-right: 14cqw; }
 .theme-cute .orn-tr { top: .6cqw; right: 1.6cqw; width: 14cqw; }
+
+/* ===== 포도알 판: 라벤더 · 금빛 · 하양 (받은 그림과 같은 분위기) ===== */
+:root { --gp-lav: #b9a2e0; --gp-deep: #5b3a8f; --gp-gold: #c9a86a; --gp-soft: #f6f1fc; }
+.gp-board { position: relative; aspect-ratio: 1086 / 1448; border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 10px 30px -12px rgba(91, 58, 143, .35); }
+.gp-board.sm { border-radius: 10px; box-shadow: none; }
+.gp-img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; }
+.gp-fill { position: absolute; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 34% 28%, rgba(255,255,255,.95) 0 7%, rgba(255,255,255,0) 18%), radial-gradient(circle at 60% 70%, rgba(255,255,255,.18) 0 10%, transparent 30%),
+    radial-gradient(circle at 45% 40%, #a77fe0 0%, #7448bd 48%, #4a2585 100%);
+  box-shadow: inset 0 -.25em .5em rgba(40, 10, 80, .35), 0 .1em .25em rgba(60, 20, 110, .25); }
+.gp-fill b { color: rgba(255,255,255,.88); font-size: clamp(9px, 2.6cqw, 15px); font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.gp-board { container-type: inline-size; }
+.gp-fill b { font-size: 4cqw; }
+.gp-fill.pop { animation: gp-pop .7s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes gp-pop { 0% { transform: translate(-50%, -50%) scale(0); } 70% { transform: translate(-50%, -50%) scale(1.15); } 100% { transform: translate(-50%, -50%) scale(1); } }
+.gp-board.done::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 0 4px var(--gp-gold); border-radius: inherit; pointer-events: none; }
+.gp-h2 { display: flex; align-items: baseline; gap: 8px; font-size: 17px; margin: 22px 0 10px; font-family: 'Gowun Batang', serif; }
+.gp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+.gp-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); color: var(--fg); text-decoration: none; transition: transform .15s, box-shadow .15s; }
+.gp-card:hover { transform: translateY(-3px); box-shadow: 0 12px 24px -14px rgba(91, 58, 143, .45); }
+.gp-card.done { border-color: var(--gp-gold); }
+.gp-card-t { display: flex; align-items: baseline; gap: 6px; }
+.gp-card-t b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Gowun Batang', serif; font-size: 15.5px; }
+.gp-count { font-size: 13px; font-weight: 800; color: var(--gp-deep); font-variant-numeric: tabular-nums; }
+:root[data-theme="dark"] .gp-count { color: #cdb6ff; }
+.gp-bar { height: 7px; border-radius: 99px; background: #ece4f8; overflow: hidden; }
+.gp-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #b9a2e0, #7448bd); transition: width .5s ease; }
+.gp-card-m { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.gp-avs { display: inline-flex; }
+.gp-avs .av { margin-left: -6px; box-shadow: 0 0 0 2px var(--card); }
+.gp-empty { display: grid; grid-template-columns: 180px 1fr; gap: 20px; align-items: center; }
+.gp-empty h3 { font-family: 'Gowun Batang', serif; margin: 0 0 6px; }
+@media (max-width: 560px) { .gp-empty { grid-template-columns: 1fr; } .gp-empty .gp-board { max-width: 220px; margin: 0 auto; } }
+.gp-badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 14px; }
+.gp-badge { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.gp-badge b { font-size: 13px; font-family: 'Gowun Batang', serif; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gp-badge small { font-size: 11.5px; color: var(--sub); }
+.gp-medal { width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 40% 30%, #ffffff, #efe6fb 60%, #dccbf3);
+  box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--gp-gold), 0 6px 14px -4px rgba(91, 58, 143, .45); }
+.gp-medal svg { width: 44px; height: 48px; }
+.gp-top { margin-bottom: 10px; }
+.gp-layout { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .gp-layout { grid-template-columns: 1fr; } .gp-stage { max-width: 440px; margin: 0 auto; width: 100%; } }
+.gp-stage { position: relative; }
+.gp-ribbon { position: absolute; left: 50%; bottom: 3%; transform: translateX(-50%); background: linear-gradient(90deg, #8f6bc9, #6a43b0); color: #fff; font-family: 'Gowun Batang', serif; font-weight: 700; padding: 8px 22px; border-radius: 99px; box-shadow: 0 6px 16px -6px rgba(91, 58, 143, .7); white-space: nowrap; }
+.gp-ribbon.celebrate { animation: gp-rise .8s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes gp-rise { from { transform: translate(-50%, 30px) scale(.6); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+.gp-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.gp-title { font-family: 'Gowun Batang', serif; font-size: 28px; margin: 0; letter-spacing: -0.02em; }
+.gp-sub { margin: -8px 0 0; color: var(--sub); font-size: 14px; }
+.gp-progress { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 0 4px; }
+.gp-progress b { font-size: 34px; font-weight: 800; color: var(--gp-deep); font-variant-numeric: tabular-nums; }
+:root[data-theme="dark"] .gp-progress b { color: #cdb6ff; }
+.gp-progress span { color: var(--sub); font-weight: 700; }
+.gp-progress .gp-bar { grid-column: 1 / -1; margin-top: 6px; height: 10px; }
+.gp-today { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: var(--gp-soft); border: 1px solid #e6dbf6; }
+:root[data-theme="dark"] .gp-today { background: rgba(185, 162, 224, .1); border-color: rgba(185, 162, 224, .25); }
+.gp-today.done { align-items: center; text-align: center; }
+.gp-today-t { display: flex; justify-content: space-between; font-weight: 800; }
+.gp-today-t span { color: var(--gp-deep); font-variant-numeric: tabular-nums; }
+.gp-mark { background: linear-gradient(90deg, #8f6bc9, #6a43b0); border: 0; }
+.gp-sec h3 { font-size: 14px; margin: 0 0 8px; color: var(--sub); }
+.gp-people, .gp-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gp-people li { display: flex; align-items: center; gap: 10px; }
+.gp-people .gp-pn { flex: 1; font-weight: 600; }
+.gp-people li b { color: var(--gp-deep); font-variant-numeric: tabular-nums; }
+.gp-log li { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.gp-log li span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gp-log small { color: var(--sub); }
+.gp-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 30%, #e6d6ff, #7448bd 55%, #4a2585); }
+.gp-acts { gap: 8px; }
+.gp-designs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.gp-design { border: 2px solid transparent; background: var(--chip); border-radius: 14px; padding: 6px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; font: inherit; color: var(--fg); }
+.gp-design img { width: 100%; border-radius: 9px; display: block; aspect-ratio: 1086 / 1448; object-fit: cover; }
+.gp-design span { font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; }
+.gp-design small { color: var(--sub); }
+.gp-design.on { border-color: #8f6bc9; background: #f3ecfd; }
+:root[data-theme="dark"] .gp-design.on { background: rgba(143, 107, 201, .2); }
+.seg button.on { background: var(--card); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.chk { display: flex; align-items: center; gap: 8px; padding: 6px 4px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.chk input { width: 18px; height: 18px; accent-color: #7448bd; }

@@ -4,7 +4,7 @@ declare(strict_types=1);
    이미 설치한 사이트도 새 기능에 필요한 표·칸이 저절로 추가돼요. 기존 데이터는 건드리지 않아요.
    새 버전에서 표 구조가 바뀌면 SCHEMA_VERSION 을 올리고 아래 sf_migrations() 에 단계를 덧붙여요. */
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 function sf_col_exists(PDO $db, string $table, string $col): bool {
     $st = $db->prepare('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
@@ -267,6 +267,61 @@ function sf_migrate(PDO $db): array {
   CONSTRAINT fk_pc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         $done[] = 'planner_covers';
+    }
+    // v11: 포도알 판 + 배지
+    if (!sf_table_exists($db, 'grape_boards')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS grape_boards (
+  id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  owner_id     INT UNSIGNED NOT NULL,
+  title        VARCHAR(40)  NOT NULL,
+  style        TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  mode         ENUM('study','check') NOT NULL DEFAULT 'study',
+  target_min   SMALLINT UNSIGNED NOT NULL DEFAULT 120,
+  created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME     NULL,
+  KEY idx_owner (owner_id),
+  CONSTRAINT fk_gb_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'grape_boards';
+    }
+    if (!sf_table_exists($db, 'grape_members')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS grape_members (
+  board_id INT UNSIGNED NOT NULL,
+  user_id  INT UNSIGNED NOT NULL,
+  PRIMARY KEY (board_id, user_id),
+  KEY idx_user (user_id),
+  CONSTRAINT fk_gm_board FOREIGN KEY (board_id) REFERENCES grape_boards(id) ON DELETE CASCADE,
+  CONSTRAINT fk_gm_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'grape_members';
+    }
+    if (!sf_table_exists($db, 'grape_marks')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS grape_marks (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  board_id   INT UNSIGNED NOT NULL,
+  user_id    INT UNSIGNED NOT NULL,
+  day        DATE         NOT NULL,
+  note       VARCHAR(60)  NOT NULL DEFAULT '',
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_one_a_day (board_id, user_id, day),
+  CONSTRAINT fk_gk_board FOREIGN KEY (board_id) REFERENCES grape_boards(id) ON DELETE CASCADE,
+  CONSTRAINT fk_gk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'grape_marks';
+    }
+    if (!sf_table_exists($db, 'badges')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS badges (
+  id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id   INT UNSIGNED NOT NULL,
+  kind      VARCHAR(12)  NOT NULL,
+  ref_id    INT UNSIGNED NOT NULL,
+  title     VARCHAR(60)  NOT NULL,
+  style     TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  earned_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_badge (user_id, kind, ref_id),
+  CONSTRAINT fk_bd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'badges';
     }
     return $done;
 }

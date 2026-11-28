@@ -366,3 +366,50 @@ CREATE TABLE IF NOT EXISTS planner_covers (
   PRIMARY KEY (user_id, ym),
   CONSTRAINT fk_pc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 포도알 판 + 배지 (v11)
+CREATE TABLE IF NOT EXISTS grape_boards (
+  id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  owner_id     INT UNSIGNED NOT NULL,
+  title        VARCHAR(40)  NOT NULL,
+  style        TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  mode         ENUM('study','check') NOT NULL DEFAULT 'study',
+  target_min   SMALLINT UNSIGNED NOT NULL DEFAULT 120,
+  created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME     NULL,
+  KEY idx_owner (owner_id),
+  CONSTRAINT fk_gb_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS grape_members (
+  board_id INT UNSIGNED NOT NULL,
+  user_id  INT UNSIGNED NOT NULL,
+  PRIMARY KEY (board_id, user_id),
+  KEY idx_user (user_id),
+  CONSTRAINT fk_gm_board FOREIGN KEY (board_id) REFERENCES grape_boards(id) ON DELETE CASCADE,
+  CONSTRAINT fk_gm_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS grape_marks (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  board_id   INT UNSIGNED NOT NULL,
+  user_id    INT UNSIGNED NOT NULL,
+  day        DATE         NOT NULL,
+  note       VARCHAR(60)  NOT NULL DEFAULT '',
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_one_a_day (board_id, user_id, day),
+  CONSTRAINT fk_gk_board FOREIGN KEY (board_id) REFERENCES grape_boards(id) ON DELETE CASCADE,
+  CONSTRAINT fk_gk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS badges (
+  id        INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id   INT UNSIGNED NOT NULL,
+  kind      VARCHAR(12)  NOT NULL,
+  ref_id    INT UNSIGNED NOT NULL,
+  title     VARCHAR(60)  NOT NULL,
+  style     TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  earned_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_badge (user_id, kind, ref_id),
+  CONSTRAINT fk_bd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

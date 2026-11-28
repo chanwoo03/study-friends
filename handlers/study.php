@@ -404,6 +404,7 @@ route('study.stop', 'POST', function (int $me) {
     $sid = val('SELECT id FROM study_sessions WHERE user_id = ? AND ended_at IS NULL ORDER BY id DESC LIMIT 1', [$me]);
     q('UPDATE study_sessions SET ended_at = NOW(), seconds = LEAST(TIMESTAMPDIFF(SECOND, started_at, NOW()), ?) WHERE user_id = ? AND ended_at IS NULL', [STUDY_CAP, $me]);
     $sec = $sid ? (int)val('SELECT seconds FROM study_sessions WHERE id = ?', [$sid]) : 0;
+    if (function_exists('grape_auto')) grape_auto($me);   // 공부 시간 포도알 판: 목표 넘겼으면 한 알
     return study_today([$me])[$me] + ['now' => now(), 'sessionId' => $sid ? (int)$sid : null, 'sessionSeconds' => $sec];
 });
 route('study.status', 'GET', function (int $me) {
