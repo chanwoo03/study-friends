@@ -1,10 +1,13 @@
 /* 학습 플래너: 하루 한 장 · 주간 보기 · 책장 · 한 달 플래너 북 */
-import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, setTitle, every, today, addDays, daysBetween, parseD, parseDT, nowLocal, WD, pad, COLORS, fmtDur } from '../core.js';
+import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, setTitle, every, today, addDays, daysBetween, parseD, parseDT, nowLocal, WD, pad, COLORS } from '../core.js';
+import { PACKS, packsReady, sticker } from '../stickers.js';
+import { decoEditor, paintDecos } from '../deco.js';
 
 const SLOTS = 144, START_H = 6;           // 10분 칸 144개, 아침 6시부터
 const MOODS = [['😫', '힘들었어'], ['😕', '별로'], ['🙂', '보통'], ['😊', '좋았어'], ['🤩', '최고']];
 const NO_SUBJECT = '#8b95a1';
-const BOOK_COLORS = ['#3d5a80', '#c8553d', '#2a9d8f', '#7b5ea7', '#e9a03b', '#3f7d58', '#d1495b', '#33658a', '#8d6a9f', '#b56576', '#457b9d', '#6b705c'];
+// 천 표지 색 (달마다 하나): 숲·남색 리넨·말린 장미·겨자·자두·청회색…
+const BOOK_COLORS = ['#2f4a3e', '#253a5e', '#a8606b', '#b98a2a', '#5b3f63', '#49586b', '#7a3b3b', '#2e5e5b', '#6b5a3a', '#3c4f7a', '#8a4f2a', '#4a4a58'];
 
 const fmtMin = (m) => { m = Math.round(m || 0); const hh = Math.floor(m / 60), mm = m % 60; return hh ? (mm ? `${hh}시간 ${mm}분` : `${hh}시간`) : `${mm}분`; };
 const shortMin = (m) => { m = Math.round(m || 0); return m >= 60 ? `${(m / 60).toFixed(m % 60 ? 1 : 0)}h` : `${m}m`; };
@@ -46,204 +49,227 @@ function topBar(mode, { date, u, owner, mine, friends = [], vis, onVis }) {
     h('div', { class: 'grow' }), who, visBtn);
 }
 
-/* ================= 하루 한 장 ================= */
+
+/* ================= 하루 한 장: 펼친 다이어리 =================
+   왼쪽 쪽: 날짜·기분·D-day / 오늘의 목표 / 할 일(과목 · 할 일 · ○△×) / 돌아보기
+   오른쪽 쪽: 10분 타임테이블 / 과목별 시간
+   그 위에 스티커·테이프·도장·사진을 자유롭게 붙여요. 플래너 북도 이 두 쪽을 그대로 묶어요. */
+const MARKS = ['', '○', '△', '×'];
+const MARK_LABEL = ['아직', '다 했어요', '조금 했어요', '못 했어요'];
+
+function pageShell(side) { return h('section', { class: `pd-page pd-${side}` }, h('div', { class: 'pd-in' })); }
+function lbl(text, ...extra) { return h('div', { class: 'pd-lbl' }, h('span', { class: 'pd-hl' }, text), ...extra); }
+function ttGrid(slotsOf, subs) {
+  const grid = h('div', { class: 'pd-tt' });
+  const cells = [];
+  for (let r = 0; r < 24; r++) {
+    const row = h('div', { class: 'pd-tt-r' }, h('span', { class: 'pd-tt-h' }, hourLabel(r)));
+    for (let c = 0; c < 6; c++) { const i = r * 6 + c; const cell = h('i', { class: 'pd-tt-c', 'data-i': i, title: slotTime(i) }); cells.push(cell); row.append(cell); }
+    grid.append(row);
+  }
+  const paint = (i) => {
+    const [sid, auto] = slotsOf(i);
+    const cell = cells[i];
+    cell.classList.toggle('on', sid !== undefined);
+    cell.classList.toggle('auto', sid !== undefined && auto);
+    cell.style.setProperty('--c', sid !== undefined ? colorOf(subs(), sid) : '');
+  };
+  return { grid, cells, paint, paintAll: () => { for (let i = 0; i < SLOTS; i++) paint(i); } };
+}
+function subTotals(merged, subsMap) {
+  const by = {};
+  for (const sid of Object.values(merged)) by[sid] = (by[sid] || 0) + 10;
+  const rows = Object.entries(by).sort((a, b) => b[1] - a[1]);
+  if (!rows.length) return h('p', { class: 'pd-none' }, '아직 칠한 칸이 없어요');
+  const top = rows[0][1];
+  return h('div', { class: 'pd-subs' }, rows.map(([sid, m]) => { const s = subsMap.get(Number(sid)); return h('div', { class: 'pd-subs-r' },
+    h('span', { class: 'pd-subs-n' }, h('i', { style: { '--c': colorOf(subsMap, Number(sid)) } }), s ? s.name : '과목 없음'),
+    h('span', { class: 'pd-subs-t' }, h('i', { style: { width: `${(m / top) * 100}%`, background: colorOf(subsMap, Number(sid)) } })), h('b', null, fmtMin(m))); }));
+}
+function moodRowEl(mood, onPick) {
+  return h('div', { class: 'pd-moods', role: 'group', 'aria-label': '오늘 기분' }, MOODS.map(([e, label], i) =>
+    onPick ? h('button', { type: 'button', class: 'pd-mood' + (mood === i + 1 ? ' on' : ''), 'aria-pressed': String(mood === i + 1), 'aria-label': '기분 ' + label, title: label, onclick: () => onPick(i + 1) }, e)
+      : (mood === i + 1 ? h('span', { class: 'pd-mood on', title: label }, e) : null)));
+}
+function headEl(date, x, ddays, moodEl) {
+  const d = parseD(date);
+  return h('div', { class: 'pd-head' },
+    h('div', { class: 'pd-num' }, d.getDate()),
+    h('div', { class: 'pd-meta' }, h('span', null, `${d.getMonth() + 1}월`), h('span', null, wd(date))),
+    h('div', { class: 'pd-head-r' }, moodEl,
+      ddays.length ? h('div', { class: 'pd-dd' }, ddays.slice(0, 2).map((y) => h('span', { style: { '--c': y.color } }, h('b', null, ddayText(y.day, date)), y.title))) : null));
+}
+function ringEl(m, g) {
+  const pct = g ? Math.min(100, Math.round((m / g) * 100)) : 0;
+  return h('div', { class: 'pd-ring', style: { '--p': pct } }, h('span', null, g ? `${pct}%` : '—'));
+}
+
 async function dayPage(view, date, u) {
   setTitle('플래너');
   let d;
-  try { d = await api.get('planner.get', u ? { date, u } : { date }); } catch (e) { view.append(h('div', { class: 'card empty' }, e.message)); return; }
+  try { [d] = await Promise.all([api.get('planner.get', u ? { date, u } : { date }), packsReady]); } catch (e) { view.append(h('div', { class: 'card empty' }, e.message)); return; }
   const ro = !d.mine, isToday = date === d.today;
   let subs = subjectMap(d.subjects);
   const manual = { ...d.blocks };
+  const photos = Object.fromEntries(d.photos.map((p) => [p.id, p]));
   const stop = [];
 
-  const ownerName = d.mine ? '나' : d.owner.name;
-  view.append(topBar('day', { date, u, owner: d.owner, mine: d.mine, friends: d.friendsSharing, vis: d.vis, onVis: toggleVis }));
-
-  /* 머리: 날짜 · D-day · 기분 */
-  const moodRow = h('div', { class: 'pl-moods', role: 'group', 'aria-label': '오늘 기분' });
-  function paintMood() {
-    moodRow.replaceChildren(...MOODS.map(([e, label], i) => h('button', { type: 'button', class: 'pl-mood' + (d.mood === i + 1 ? ' on' : ''), disabled: ro, 'aria-pressed': String(d.mood === i + 1), title: label, 'aria-label': '기분 ' + label,
-      onclick: () => { d.mood = d.mood === i + 1 ? null : i + 1; paintMood(); save({ mood: d.mood }); } }, e)));
-  }
-  paintMood();
-  const ddayRow = h('div', { class: 'pl-ddays' });
-  function paintDdays() {
-    ddayRow.replaceChildren(...d.ddays.slice(0, 3).map((x) => h('span', { class: 'pl-dday', style: { '--c': x.color } }, h('b', null, ddayText(x.day, date)), x.title)),
-      d.mine ? h('button', { type: 'button', class: 'pl-dday add', onclick: ddayModal }, icon('plus'), 'D-day') : null);
-  }
-  paintDdays();
-  view.append(h('header', { class: 'pl-head' },
-    h('a', { class: 'btn ghost icon', href: `#/planner/${addDays(date, -1)}${uq(u)}`, 'aria-label': '전날' }, icon('back')),
-    h('div', { class: 'pl-date' }, h('div', { class: 'pl-date-n' }, longDate(date)), h('div', { class: 'pl-date-w' }, wd(date), d.mine ? null : ` · ${ownerName}의 플래너`)),
-    h('a', { class: 'btn ghost icon', href: `#/planner/${addDays(date, 1)}${uq(u)}`, 'aria-label': '다음날' }, icon('next')),
-    isToday ? null : h('a', { class: 'btn sm', href: `#/planner/${d.today}${uq(u)}` }, '오늘'),
-    h('div', { class: 'grow' }), ddayRow, moodRow));
-
-  /* 목표 + 타이머 */
-  const ring = h('div', { class: 'pl-ring' });
-  const goalVal = h('b');
-  const studiedEl = h('div', { class: 'pl-studied' });
-  function minutes() { return Object.keys(merge(d.auto, manual)).length * 10; }
-  function paintGoal() {
-    const m = minutes(), g = d.goalMin || 0, pct = g ? Math.min(100, Math.round((m / g) * 100)) : 0;
-    ring.style.setProperty('--p', pct);
-    ring.replaceChildren(h('span', null, g ? pct + '%' : '—'));
-    goalVal.textContent = g ? fmtMin(g) : '목표 없음';
-    studiedEl.replaceChildren(h('span', { class: 'small muted' }, '공부한 시간'), h('b', null, fmtMin(m)),
-      d.studySeconds && Math.abs(d.studySeconds / 60 - m) >= 10 ? h('span', { class: 'tiny muted' }, `타이머 ${fmtDur(d.studySeconds)}`) : null);
-  }
-  const stepGoal = (delta) => { d.goalMin = Math.max(0, Math.min(1440, (d.goalMin || 0) + delta)) || null; paintGoal(); save({ goalMin: d.goalMin }); };
-  const timerBox = h('div', { class: 'pl-timer' });
-  let pick = d.subjects[0] ? d.subjects[0].id : 0;
+  /* 도구줄: 날짜 넘기기 · 공부 타이머 · 꾸미기 */
+  const timerBox = h('div', { class: 'pd-timer' });
+  let pick = d.subjects[0] ? d.subjects[0].id : 0, timerTick = null;
   function paintTimer() {
+    timerTick = null;
     if (!d.mine || !isToday) { timerBox.hidden = true; return; }
     if (d.studyingSince) {
-      const el = h('b', { class: 'pl-clock' });
-      const tick = () => { el.textContent = fmtClock((nowLocal() - parseDT(d.studyingSince)) / 1000); };
-      tick();
+      const el = h('b', { class: 'pd-clock' });
+      timerTick = () => { el.textContent = fmtClock((nowLocal() - parseDT(d.studyingSince)) / 1000); };
+      timerTick();
       const s = d.studyingSubject && subs.get(d.studyingSubject);
-      timerBox.replaceChildren(h('span', { class: 'pl-live', style: { '--c': s ? s.color : NO_SUBJECT } }, h('i'), s ? s.name : '공부', ' 중'), el,
+      timerBox.replaceChildren(h('span', { class: 'pd-live', style: { '--c': s ? s.color : NO_SUBJECT } }, h('i'), s ? s.name : '공부'), el,
         h('button', { type: 'button', class: 'btn sm danger', onclick: stopStudy }, '끝내기'));
-      timerTick = tick;
     } else {
-      timerTick = null;
-      timerBox.replaceChildren(
-        h('div', { class: 'pl-pick' }, [...d.subjects.map((s) => ({ id: s.id, name: s.name, color: s.color })), { id: 0, name: '과목 없이', color: NO_SUBJECT }].map((s) =>
-          h('button', { type: 'button', class: 'pl-chip' + (pick === s.id ? ' on' : ''), style: { '--c': s.color }, onclick: () => { pick = s.id; paintTimer(); } }, h('i'), s.name))),
-        h('button', { type: 'button', class: 'btn primary sm', onclick: startStudy }, icon('play'), '공부 시작'));
+      const sel = h('select', { class: 'input pd-tsel', 'aria-label': '공부할 과목', onchange: (e) => { pick = Number(e.target.value); } },
+        [...d.subjects, { id: 0, name: '과목 없이' }].map((s) => h('option', { value: s.id, selected: s.id === pick }, s.name)));
+      timerBox.replaceChildren(sel, h('button', { type: 'button', class: 'btn primary sm', onclick: startStudy }, icon('play'), '공부 시작'));
     }
   }
-  let timerTick = null;
   stop.push(every(1000, () => { if (timerTick) timerTick(); }));
-  async function startStudy() {
-    try { await api.post('study.start', pick ? { subject: pick } : {}); await reload(); toast('공부를 시작했어요. 타임테이블에 저절로 칠해져요'); } catch (e) { errToast(e); }
-  }
-  async function stopStudy() {
-    try { await api.post('study.stop'); await reload(); toast('수고했어요!'); } catch (e) { errToast(e); }
-  }
-  const goalCard = h('section', { class: 'card pl-goal' },
-    h('h3', { class: 'pl-h' }, '오늘의 목표'),
-    h('div', { class: 'pl-goal-row' }, ring,
-      h('div', { class: 'pl-goal-txt' }, studiedEl,
-        h('div', { class: 'pl-goal-set' }, h('span', { class: 'small muted' }, '목표'),
-          ro ? null : h('button', { type: 'button', class: 'btn ghost icon sm', 'aria-label': '목표 30분 줄이기', onclick: () => stepGoal(-30) }, '−'),
-          goalVal,
-          ro ? null : h('button', { type: 'button', class: 'btn ghost icon sm', 'aria-label': '목표 30분 늘리기', onclick: () => stepGoal(30) }, '+')))),
-    timerBox);
+  async function startStudy() { try { await api.post('study.start', pick ? { subject: pick } : {}); await reload(); toast('공부를 시작했어요. 타임테이블에 저절로 칠해져요'); } catch (e) { errToast(e); } }
+  async function stopStudy() { try { await api.post('study.stop'); await reload(); toast('수고했어요!'); } catch (e) { errToast(e); } }
+  const decoBtn = ro ? null : h('button', { type: 'button', class: 'btn sm pd-decobtn', onclick: () => { const on = editor.toggle(); decoBtn.classList.toggle('on', on); decoBtn.lastChild.textContent = on ? '꾸미는 중' : '꾸미기'; } }, icon('sticky'), h('span', null, '꾸미기'));
 
-  /* 할 일 */
-  const todoList = h('ul', { class: 'pl-todos' });
-  function paintTodos() {
-    const items = [];
-    for (const t of d.tasks) items.push(h('li', { class: 'pl-todo' + (t.done ? ' done' : '') },
-      h('label', null, h('input', { type: 'checkbox', checked: t.done, onchange: async (e) => { try { await api.post('tasks.toggle', { id: t.id, done: e.target.checked }); t.done = e.target.checked; paintTodos(); } catch (er) { errToast(er); e.target.checked = !e.target.checked; } } }),
-        h('i', { class: 'pl-dot', style: { '--c': t.planColor || NO_SUBJECT } }), h('span', { class: 'pl-todo-t' }, t.subject ? h('em', null, t.subject) : null, t.content)),
-      h('span', { class: 'pl-tag', title: t.planTitle }, t.kind === 'group' ? '공동' : '계획')));
-    for (const t of d.todos) items.push(h('li', { class: 'pl-todo' + (t.done ? ' done' : '') },
-      h('label', null, h('input', { type: 'checkbox', checked: t.done, disabled: ro, onchange: async (e) => { try { await api.post('planner.todo_toggle', { id: t.id, done: e.target.checked }); t.done = e.target.checked; paintTodos(); } catch (er) { errToast(er); } } }),
-        h('i', { class: 'pl-dot', style: { '--c': colorOf(subs, t.subjectId) } }), h('span', { class: 'pl-todo-t' }, t.subjectId && subs.get(t.subjectId) ? h('em', null, subs.get(t.subjectId).name) : null, t.text)),
-      ro ? null : h('span', { class: 'pl-todo-acts' },
-        t.done ? null : h('button', { type: 'button', class: 'btn ghost icon sm', title: '다음날로 미루기', 'aria-label': t.text + ' 다음날로', onclick: async () => { try { await api.post('planner.todo_move', { id: t.id, to: addDays(date, 1) }); d.todos = d.todos.filter((x) => x !== t); paintTodos(); toast('다음날로 옮겼어요'); } catch (e) { errToast(e); } } }, icon('next')),
-        h('button', { type: 'button', class: 'btn ghost icon sm', 'aria-label': t.text + ' 지우기', onclick: async () => { try { await api.post('planner.todo_del', { id: t.id }); d.todos = d.todos.filter((x) => x !== t); paintTodos(); } catch (e) { errToast(e); } } }, icon('x')))));
-    const done = d.tasks.filter((t) => t.done).length + d.todos.filter((t) => t.done).length, total = d.tasks.length + d.todos.length;
-    todoCount.textContent = total ? `${done}/${total}` : '';
-    todoList.replaceChildren(...(items.length ? items : [h('li', { class: 'pl-empty' }, ro ? '할 일이 없어요' : '오늘 할 일을 적어 보세요')]));
+  view.append(topBar('day', { date, u, owner: d.owner, mine: d.mine, friends: d.friendsSharing, vis: d.vis, onVis: toggleVis }),
+    h('div', { class: 'pd-bar' },
+      h('a', { class: 'btn ghost icon', href: `#/planner/${addDays(date, -1)}${uq(u)}`, 'aria-label': '전날' }, icon('back')),
+      h('a', { class: 'btn ghost icon', href: `#/planner/${addDays(date, 1)}${uq(u)}`, 'aria-label': '다음날' }, icon('next')),
+      isToday ? null : h('a', { class: 'btn sm', href: `#/planner/${d.today}${uq(u)}` }, '오늘'),
+      ro ? h('span', { class: 'small muted' }, `${d.owner.name}의 플래너 · 보기만 할 수 있어요`) : null,
+      h('span', { class: 'grow' }), timerBox, decoBtn));
+
+  /* ---- 왼쪽 쪽 ---- */
+  const left = pageShell('left'), right = pageShell('right');
+  const L = left.firstChild, R = right.firstChild;
+  const headBox = h('div');
+  function paintHead() {
+    headBox.replaceChildren(headEl(date, d, d.ddays, moodRowEl(d.mood, ro ? null : (n) => { d.mood = d.mood === n ? null : n; paintHead(); save({ mood: d.mood }); })),
+      d.mine ? h('button', { type: 'button', class: 'pd-ddadd', onclick: ddayModal }, d.ddays.length ? 'D-day 고치기' : '+ D-day') : null);
   }
-  const todoCount = h('span', { class: 'pl-count' });
-  const todoIn = h('input', { class: 'input', maxlength: '120', placeholder: '할 일 추가', 'aria-label': '할 일 추가' });
-  const todoSub = h('select', { class: 'input pl-sel', 'aria-label': '과목' });
+  const goalBox = h('div', { class: 'pd-goal' });
+  const minutes = () => Object.keys(merge(d.auto, manual)).length * 10;
+  function paintGoal() {
+    const m = minutes(), g = d.goalMin || 0;
+    goalBox.replaceChildren(ringEl(m, g),
+      h('div', { class: 'pd-goal-t' },
+        h('div', null, h('span', { class: 'pd-k' }, '공부한 시간'), h('b', { class: 'pd-hand' }, fmtMin(m))),
+        h('div', null, h('span', { class: 'pd-k' }, '목표'),
+          ro ? null : h('button', { type: 'button', class: 'pd-step', 'aria-label': '목표 30분 줄이기', onclick: () => stepGoal(-30) }, '−'),
+          h('b', { class: 'pd-hand' }, g ? fmtMin(g) : '정하기'),
+          ro ? null : h('button', { type: 'button', class: 'pd-step', 'aria-label': '목표 30분 늘리기', onclick: () => stepGoal(30) }, '+'))));
+    ttTotal.textContent = fmtMin(m);
+    subsBox.replaceChildren(subTotals(merge(d.auto, manual), subs));
+  }
+  const stepGoal = (delta) => { d.goalMin = Math.max(0, Math.min(1440, (d.goalMin || 0) + delta)) || null; paintGoal(); save({ goalMin: d.goalMin }); };
+
+  const todoBox = h('div', { class: 'pd-tbl' });
+  const todoCount = h('span', { class: 'pd-cnt' });
+  function markBtn(state, label, onClick) {
+    return h('button', { type: 'button', class: `pd-mark m${state}`, disabled: !onClick, 'aria-label': `${label} 표시: ${MARK_LABEL[state]}`, title: '눌러서 ○ → △ → × 바꾸기', onclick: onClick }, MARKS[state]);
+  }
+  function paintTodos() {
+    const rows = [];
+    for (const t of d.tasks) rows.push(h('div', { class: 'pd-tr' + (t.done ? ' done' : '') },
+      h('span', { class: 'pd-sub', style: { '--c': t.planColor || NO_SUBJECT } }, t.subject || '계획'),
+      h('span', { class: 'pd-txt', title: t.planTitle }, t.content),
+      markBtn(t.done ? 1 : 0, t.content, async () => { try { await api.post('tasks.toggle', { id: t.id, done: !t.done }); t.done = !t.done; paintTodos(); } catch (e) { errToast(e); } })));
+    for (const t of d.todos) {
+      const s = t.subjectId && subs.get(t.subjectId);
+      rows.push(h('div', { class: `pd-tr${t.state === 1 ? ' done' : ''}` },
+        h('span', { class: 'pd-sub', style: { '--c': colorOf(subs, t.subjectId) } }, s ? s.name : '—'),
+        h('span', { class: 'pd-txt' }, t.text,
+          ro ? null : h('span', { class: 'pd-acts' },
+            t.state === 1 ? null : h('button', { type: 'button', title: '다음날로 미루기', 'aria-label': t.text + ' 다음날로', onclick: async () => { try { await api.post('planner.todo_move', { id: t.id, to: addDays(date, 1) }); d.todos = d.todos.filter((x) => x !== t); paintTodos(); toast('다음날로 옮겼어요'); } catch (e) { errToast(e); } } }, icon('next')),
+            h('button', { type: 'button', 'aria-label': t.text + ' 지우기', onclick: async () => { try { await api.post('planner.todo_del', { id: t.id }); d.todos = d.todos.filter((x) => x !== t); paintTodos(); } catch (e) { errToast(e); } } }, icon('x')))),
+        markBtn(t.state, t.text, ro ? null : async () => { const next = (t.state + 1) % 4; try { await api.post('planner.todo_toggle', { id: t.id, state: next }); t.state = next; t.done = next === 1; paintTodos(); } catch (e) { errToast(e); } })));
+    }
+    const done = d.tasks.filter((t) => t.done).length + d.todos.filter((t) => t.state === 1).length, total = d.tasks.length + d.todos.length;
+    todoCount.textContent = total ? `${done}/${total}` : '';
+    if (!rows.length) rows.push(h('div', { class: 'pd-tr empty' }, h('span', { class: 'pd-sub' }), h('span', { class: 'pd-txt pd-none' }, ro ? '할 일이 없어요' : '아래에 오늘 할 일을 적어요'), h('span')));
+    todoBox.replaceChildren(h('div', { class: 'pd-th' }, h('span', null, '과목'), h('span', null, '할 일'), h('span', null, '○△×')), ...rows, ro ? null : addRow);
+  }
+  const todoIn = h('input', { class: 'pd-in-t', maxlength: '120', placeholder: '할 일 적고 Enter', 'aria-label': '할 일 추가' });
+  const todoSub = h('select', { class: 'pd-in-s', 'aria-label': '과목' });
   function paintSubSelect() { todoSub.replaceChildren(h('option', { value: '' }, '과목'), ...d.subjects.map((s) => h('option', { value: s.id }, s.name))); }
   paintSubSelect();
-  const todoCard = h('section', { class: 'card pl-todo-card' },
-    h('h3', { class: 'pl-h' }, '오늘 할 일', todoCount),
-    todoList,
-    ro ? null : h('form', { class: 'pl-add', onsubmit: async (e) => {
-      e.preventDefault();
-      const text = todoIn.value.trim(); if (!text) return;
-      try { const r = await api.post('planner.todo_add', { date, text, subjectId: Number(todoSub.value) || 0 }); d.todos.push(r.todo); todoIn.value = ''; paintTodos(); } catch (er) { errToast(er); }
-    } }, todoIn, todoSub, h('button', { class: 'btn primary icon', type: 'submit', 'aria-label': '추가' }, icon('plus'))));
-  paintTodos();
+  const addRow = h('form', { class: 'pd-tr add', onsubmit: async (e) => {
+    e.preventDefault();
+    const text = todoIn.value.trim(); if (!text) return;
+    try { const r = await api.post('planner.todo_add', { date, text, subjectId: Number(todoSub.value) || 0 }); d.todos.push(r.todo); todoIn.value = ''; paintTodos(); todoIn.focus(); } catch (er) { errToast(er); }
+  } }, todoSub, todoIn, h('button', { type: 'submit', class: 'pd-mark add', 'aria-label': '할 일 추가' }, '+'));
 
-  /* 타임테이블 */
-  const cells = [];
-  const grid = h('div', { class: 'tt-grid', 'aria-label': '타임테이블 (10분 칸)' });
-  for (let r = 0; r < 24; r++) {
-    const row = h('div', { class: 'tt-row' }, h('span', { class: 'tt-h' }, hourLabel(r)));
-    for (let c = 0; c < 6; c++) { const i = r * 6 + c; const cell = h('span', { class: 'tt-c', 'data-i': i, title: slotTime(i) }); cells.push(cell); row.append(cell); }
-    grid.append(row);
-  }
-  function paintCell(i) {
-    const auto = d.auto[i], man = manual[i];
-    const sid = man !== undefined ? (man < 0 ? undefined : man) : auto;
-    const cell = cells[i];
-    cell.classList.toggle('on', sid !== undefined);
-    cell.classList.toggle('auto', sid !== undefined && man === undefined);
-    cell.style.setProperty('--c', sid !== undefined ? colorOf(subs, sid) : '');
-  }
-  const paintGrid = () => { for (let i = 0; i < SLOTS; i++) paintCell(i); };
-  let brush = null;   // null = 보기, 'erase', 또는 과목 id (0 = 과목 없음)
-  const legend = h('div', { class: 'tt-legend' });
-  function paintLegend() {
-    const by = {};
-    for (const sid of Object.values(merge(d.auto, manual))) by[sid] = (by[sid] || 0) + 10;
-    const list = [...d.subjects, ...(by[0] ? [{ id: 0, name: '과목 없음', color: NO_SUBJECT }] : [])];
-    legend.replaceChildren(
-      ...list.map((s) => h('button', { type: 'button', class: 'pl-chip' + (brush === s.id ? ' on' : ''), style: { '--c': s.color }, disabled: ro, 'aria-pressed': String(brush === s.id),
-        title: ro ? '' : s.name + '(으)로 칠하기', onclick: () => setBrush(brush === s.id ? null : s.id) }, h('i'), s.name, by[s.id] ? h('small', null, shortMin(by[s.id])) : null)),
-      ro ? null : h('button', { type: 'button', class: 'pl-chip erase' + (brush === 'erase' ? ' on' : ''), 'aria-pressed': String(brush === 'erase'), onclick: () => setBrush(brush === 'erase' ? null : 'erase') }, icon('eraser'), '지우개'),
-      ro ? null : h('button', { type: 'button', class: 'btn ghost sm', onclick: subjectModal }, icon('gear'), '과목'));
-    hint.textContent = ro ? '' : brush === null ? '과목을 고르고 칸을 누르거나 끌어서 칠해요. 공부 타이머 기록은 저절로 칠해져요' : brush === 'erase' ? '지울 칸을 누르거나 끌어요 · 다시 누르면 끝' : '칠할 칸을 누르거나 끌어요 · 과목을 다시 누르면 끝';
-  }
-  const hint = h('p', { class: 'tiny muted tt-hint' });
-  function setBrush(b) { brush = b; grid.classList.toggle('painting', b !== null); paintLegend(); }
-  function apply(i) {
-    if (brush === null || i < 0) return;
-    if (brush === 'erase') { if (d.auto[i] !== undefined) manual[i] = -1; else delete manual[i]; }
-    else manual[i] = brush;
-    paintCell(i); dirtyBlocks();
-  }
-  let painting = false;
-  const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.classList && el.classList.contains('tt-c') ? Number(el.dataset.i) : -1; };
-  grid.addEventListener('pointerdown', (e) => { if (brush === null || ro) return; painting = true; grid.setPointerCapture(e.pointerId); apply(cellAt(e.clientX, e.clientY)); e.preventDefault(); });
-  grid.addEventListener('pointermove', (e) => { if (painting) apply(cellAt(e.clientX, e.clientY)); });
-  const endPaint = () => { painting = false; };
-  grid.addEventListener('pointerup', endPaint); grid.addEventListener('pointercancel', endPaint);
-  let blocksT = null;
-  function dirtyBlocks() {
-    paintGoal(); paintLegend();
-    clearTimeout(blocksT);
-    blocksT = setTimeout(() => api.post('planner.blocks', { date, blocks: manual }).catch(errToast), 700);
-  }
-  paintGrid(); paintLegend();
-  const ttCard = h('section', { class: 'card pl-tt' }, h('h3', { class: 'pl-h' }, '타임테이블', h('span', { class: 'pl-count' }, fmtMin(minutes()))), legend, grid, hint);
-  const ttTotal = ttCard.querySelector('.pl-count');
-
-  /* 돌아보기 */
-  const stars = h('div', { class: 'pl-stars', role: 'group', 'aria-label': '오늘 만족도' });
+  const stars = h('span', { class: 'pd-stars', role: 'group', 'aria-label': '오늘 만족도' });
   function paintStars() {
     stars.replaceChildren(...[1, 2, 3, 4, 5].map((n) => h('button', { type: 'button', class: (d.rating || 0) >= n ? 'on' : '', disabled: ro, 'aria-label': `만족도 ${n}점`,
       onclick: () => { d.rating = d.rating === n ? null : n; paintStars(); save({ rating: d.rating }); } }, '★')));
   }
-  paintStars();
-  const reflect = h('textarea', { class: 'pl-reflect', maxlength: '500', rows: '4', placeholder: ro ? '' : '오늘 잘한 점, 아쉬운 점, 내일 할 것…', readonly: ro, 'aria-label': '하루 돌아보기' });
+  const reflect = h('textarea', { class: 'pd-lines', maxlength: '500', rows: '5', readonly: ro, placeholder: ro ? '' : '잘한 점, 아쉬운 점, 내일 할 것', 'aria-label': '하루 돌아보기' });
   reflect.value = d.reflection;
   let refT = null;
   reflect.addEventListener('input', () => { clearTimeout(refT); refT = setTimeout(() => save({ reflection: reflect.value }), 800); });
-  const reflectCard = h('section', { class: 'card pl-reflect-card' }, h('h3', { class: 'pl-h' }, '하루 돌아보기', stars), reflect);
 
-  view.append(h('div', { class: 'pl-grid' }, h('div', { class: 'pl-col' }, goalCard, todoCard, reflectCard), h('div', { class: 'pl-col' }, ttCard)));
-  const oldPaintGoal = paintGoal;
-  paintGoal = () => { oldPaintGoal(); ttTotal.textContent = fmtMin(minutes()); };   // eslint-disable-line no-func-assign
-  paintGoal(); paintTimer();
+  L.append(headBox,
+    h('div', { class: 'pd-sec' }, lbl('오늘의 목표'), goalBox),
+    h('div', { class: 'pd-sec pd-grow' }, lbl('할 일', todoCount), todoBox),
+    h('div', { class: 'pd-sec' }, lbl('돌아보기', stars), reflect));
+
+  /* ---- 오른쪽 쪽 ---- */
+  const tt = ttGrid((i) => {
+    const man = manual[i];
+    if (man !== undefined) return man < 0 ? [undefined, false] : [man, false];
+    return [d.auto[i], true];
+  }, () => subs);
+  const ttTotal = h('span', { class: 'pd-cnt' });
+  const subsBox = h('div');
+  let brush = null;
+  const legend = h('div', { class: 'pd-legend' });
+  const hint = h('p', { class: 'pd-hint' });
+  function paintLegend() {
+    if (ro) { legend.replaceChildren(); hint.textContent = ''; return; }
+    legend.replaceChildren(
+      ...[...d.subjects, { id: 0, name: '과목 없음', color: NO_SUBJECT }].map((s) => h('button', { type: 'button', class: 'pd-brush' + (brush === s.id ? ' on' : ''), style: { '--c': s.color }, 'aria-pressed': String(brush === s.id), onclick: () => setBrush(brush === s.id ? null : s.id) }, h('i'), s.name)),
+      h('button', { type: 'button', class: 'pd-brush erase' + (brush === 'erase' ? ' on' : ''), 'aria-pressed': String(brush === 'erase'), onclick: () => setBrush(brush === 'erase' ? null : 'erase') }, icon('eraser'), '지우개'),
+      h('button', { type: 'button', class: 'pd-brush ghost', onclick: subjectModal }, icon('gear'), '과목'));
+    hint.textContent = brush === null ? '과목을 고르고 칸을 눌러 칠해요. 타이머 기록은 빗금으로 저절로 칠해져요' : '칸을 누르거나 끌어서 칠해요 · 다 칠하면 과목을 다시 눌러요';
+  }
+  function setBrush(b) { brush = b; tt.grid.classList.toggle('painting', b !== null); paintLegend(); }
+  function apply(i) {
+    if (brush === null || i < 0 || Number.isNaN(i)) return;
+    if (brush === 'erase') { if (d.auto[i] !== undefined) manual[i] = -1; else delete manual[i]; } else manual[i] = brush;
+    tt.paint(i); dirtyBlocks();
+  }
+  let painting = false;
+  const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.classList && el.classList.contains('pd-tt-c') ? Number(el.dataset.i) : -1; };
+  tt.grid.addEventListener('pointerdown', (e) => { if (brush === null || ro) return; painting = true; tt.grid.setPointerCapture(e.pointerId); apply(cellAt(e.clientX, e.clientY)); e.preventDefault(); });
+  tt.grid.addEventListener('pointermove', (e) => { if (painting) apply(cellAt(e.clientX, e.clientY)); });
+  const endPaint = () => { painting = false; };
+  tt.grid.addEventListener('pointerup', endPaint); tt.grid.addEventListener('pointercancel', endPaint);
+  let blocksT = null;
+  function dirtyBlocks() { paintGoal(); clearTimeout(blocksT); blocksT = setTimeout(() => api.post('planner.blocks', { date, blocks: manual }).catch(errToast), 700); }
+  R.append(h('div', { class: 'pd-sec' }, lbl('타임테이블', ttTotal), legend, tt.grid, hint), h('div', { class: 'pd-sec' }, lbl('과목별 시간'), subsBox));
+
+  const spread = h('div', { class: 'pd-spread' + (ro ? ' ro' : '') }, left, right);
+  view.append(spread);
+  paintHead(); paintGoal(); paintTodos(); paintStars(); tt.paintAll(); paintLegend(); paintTimer();
+  const editor = ro ? null : decoEditor({ date, pages: [left, right], decos: d.decos, photos, onChange: () => {} });
+  if (ro) paintDecos([left, right], d.decos, { photos, u });
 
   async function save(fields) { if (ro) return; try { await api.post('planner.save', { date, ...fields }); } catch (e) { errToast(e); } }
   async function reload() {
-    d = await api.get('planner.get', u ? { date, u } : { date });
+    const n = await api.get('planner.get', u ? { date, u } : { date });
+    Object.assign(d, { auto: n.auto, studyingSince: n.studyingSince, studyingSubject: n.studyingSubject, studySeconds: n.studySeconds, tasks: n.tasks, todos: n.todos, subjects: n.subjects, ddays: n.ddays });
     subs = subjectMap(d.subjects);
-    Object.keys(manual).forEach((k) => delete manual[k]); Object.assign(manual, d.blocks);
-    paintGrid(); paintLegend(); paintGoal(); paintTimer(); paintSubSelect(); paintTodos(); paintDdays();
+    tt.paintAll(); paintGoal(); paintTimer(); paintTodos(); paintLegend(); paintSubSelect(); paintHead();
   }
-  if (isToday) stop.push(every(60000, () => { if (!painting && document.visibilityState === 'visible') reload().catch(() => {}); }));
+  if (isToday) stop.push(every(60000, () => { if (!painting && document.visibilityState === 'visible' && !(editor && editor.isOn())) reload().catch(() => {}); }));
 
   async function toggleVis() {
     const next = d.vis === 'friends' ? 'private' : 'friends';
@@ -251,26 +277,26 @@ async function dayPage(view, date, u) {
   }
   function subjectModal() {
     const list = h('div', { class: 'pl-sublist' });
+    const after = (r) => { d.subjects = r.subjects; subs = subjectMap(d.subjects); paint(); paintLegend(); tt.paintAll(); paintSubSelect(); paintTimer(); paintTodos(); paintGoal(); };
     const paint = () => list.replaceChildren(...d.subjects.map((s) => subjectRow(s)), subjectRow(null));
     function subjectRow(s) {
       let color = s ? s.color : COLORS[d.subjects.length % COLORS.length];
       const name = h('input', { class: 'input', maxlength: '20', placeholder: s ? '' : '새 과목 이름', value: s ? s.name : '', 'aria-label': '과목 이름' });
       const sw = h('div', { class: 'pl-swatches' }, COLORS.map((c) => h('button', { type: 'button', style: { '--c': c }, 'aria-label': '색 ' + c, 'aria-pressed': String(c === color), onclick: (e) => { color = c; sw.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } })));
-      const saveBtn = h('button', { type: 'button', class: 'btn sm' + (s ? '' : ' primary'), onclick: async () => {
-        if (!name.value.trim()) { toast('과목 이름을 적어 주세요'); return; }
-        try { const r = await api.post('planner.subject_save', { id: s ? s.id : 0, name: name.value.trim(), color }); d.subjects = r.subjects; subs = subjectMap(d.subjects); paint(); paintLegend(); paintGrid(); paintSubSelect(); paintTimer(); paintTodos(); } catch (e) { errToast(e); }
-      } }, s ? '저장' : '추가');
-      return h('div', { class: 'pl-subrow' }, name, sw, saveBtn,
-        s ? confirmBtn('삭제', '한 번 더', async () => { const r = await api.post('planner.subject_del', { id: s.id }); d.subjects = r.subjects; subs = subjectMap(d.subjects); paint(); paintLegend(); paintGrid(); paintSubSelect(); paintTimer(); paintTodos(); }, 'btn ghost sm') : null);
+      return h('div', { class: 'pl-subrow' }, name, sw,
+        h('button', { type: 'button', class: 'btn sm' + (s ? '' : ' primary'), onclick: async () => {
+          if (!name.value.trim()) { toast('과목 이름을 적어 주세요'); return; }
+          try { after(await api.post('planner.subject_save', { id: s ? s.id : 0, name: name.value.trim(), color })); } catch (e) { errToast(e); }
+        } }, s ? '저장' : '추가'),
+        s ? confirmBtn('삭제', '한 번 더', async () => after(await api.post('planner.subject_del', { id: s.id })), 'btn ghost sm') : null);
     }
     paint();
-    modal(h('div', { class: 'form' }, h('h2', null, '과목'), h('p', { class: 'small muted', style: { margin: 0 } }, '타임테이블과 할 일에 쓰는 과목과 색이에요'), list,
-      h('div', { class: 'row end' }, h('button', { type: 'button', class: 'btn', onclick: (e) => e.target.closest('.modal-bg').remove() }, '닫기'))));
+    modal(h('div', { class: 'form' }, h('h2', null, '과목'), h('p', { class: 'small muted', style: { margin: 0 } }, '타임테이블과 할 일에 쓰는 과목과 색이에요'), list));
   }
   function ddayModal() {
     const list = h('div', { class: 'pl-ddlist' });
     const paint = () => list.replaceChildren(...(d.ddays.length ? d.ddays.map((x) => h('div', { class: 'pl-ddrow' }, h('span', { class: 'pl-dday', style: { '--c': x.color } }, h('b', null, ddayText(x.day, d.today)), x.title), h('span', { class: 'tiny muted' }, x.day),
-      confirmBtn('삭제', '한 번 더', async () => { const r = await api.post('dday.del', { id: x.id }); d.ddays = r.ddays; paint(); paintDdays(); }, 'btn ghost sm'))) : [h('p', { class: 'small muted' }, '아직 D-day가 없어요')]));
+      confirmBtn('삭제', '한 번 더', async () => { const r = await api.post('dday.del', { id: x.id }); d.ddays = r.ddays; paint(); paintHead(); }, 'btn ghost sm'))) : [h('p', { class: 'small muted' }, '아직 D-day가 없어요')]));
     paint();
     const title = h('input', { class: 'input', maxlength: '40', placeholder: '예: DB 기말고사', 'aria-label': 'D-day 이름' });
     const day = h('input', { class: 'input', type: 'date', value: addDays(d.today, 14), 'aria-label': '날짜' });
@@ -279,13 +305,36 @@ async function dayPage(view, date, u) {
     modal(h('form', { class: 'form', onsubmit: async (e) => {
       e.preventDefault();
       if (!title.value.trim()) { toast('이름을 적어 주세요'); return; }
-      try { const r = await api.post('dday.save', { title: title.value.trim(), day: day.value, color }); d.ddays = r.ddays; title.value = ''; paint(); paintDdays(); } catch (er) { errToast(er); }
-    } }, h('h2', null, 'D-day'), list, h('div', { class: 'pl-ddnew' }, title, day), sw,
-      h('div', { class: 'row end' }, h('button', { type: 'submit', class: 'btn primary' }, '추가'))));
+      try { const r = await api.post('dday.save', { title: title.value.trim(), day: day.value, color }); d.ddays = r.ddays; title.value = ''; paint(); paintHead(); } catch (er) { errToast(er); }
+    } }, h('h2', null, 'D-day'), list, h('div', { class: 'pl-ddnew' }, title, day), sw, h('div', { class: 'row end' }, h('button', { type: 'submit', class: 'btn primary' }, '추가'))));
   }
-  return () => stop.forEach((f) => f());
+  return () => { stop.forEach((f) => f()); if (editor) editor.destroy(); };
 }
 function fmtClock(sec) { sec = Math.max(0, Math.floor(sec)); return `${pad(Math.floor(sec / 3600))}:${pad(Math.floor(sec / 60) % 60)}:${pad(sec % 60)}`; }
+
+/* 플래너 북 한 쪽씩 (보기 전용, 하루 화면과 같은 모양) */
+function staticSpread(x, subs, opts) {
+  const left = pageShell('left'), right = pageShell('right');
+  const todos = [...(x.tasks || []).map((t) => ({ sub: t.subject || '계획', c: t.planColor, text: t.content, m: t.done ? 1 : 0 })),
+    ...(x.todos || []).map((t) => { const s = t.subjectId && subs.get(t.subjectId); return { sub: s ? s.name : '—', c: colorOf(subs, t.subjectId), text: t.text, m: t.state || 0 }; })];
+  left.firstChild.append(headEl(x.date, x, opts.ddays || [], moodRowEl(x.mood, null)),
+    h('div', { class: 'pd-sec' }, lbl('오늘의 목표'), h('div', { class: 'pd-goal' }, ringEl(x.minutes, x.goalMin || 0),
+      h('div', { class: 'pd-goal-t' }, h('div', null, h('span', { class: 'pd-k' }, '공부한 시간'), h('b', { class: 'pd-hand' }, fmtMin(x.minutes))),
+        h('div', null, h('span', { class: 'pd-k' }, '목표'), h('b', { class: 'pd-hand' }, x.goalMin ? fmtMin(x.goalMin) : '—'))))),
+    h('div', { class: 'pd-sec pd-grow' }, lbl('할 일', h('span', { class: 'pd-cnt' }, x.todoTotal ? `${x.todoDone}/${x.todoTotal}` : '')),
+      h('div', { class: 'pd-tbl' }, h('div', { class: 'pd-th' }, h('span', null, '과목'), h('span', null, '할 일'), h('span', null, '○△×')),
+        todos.length ? todos.slice(0, 14).map((t) => h('div', { class: 'pd-tr' + (t.m === 1 ? ' done' : '') }, h('span', { class: 'pd-sub', style: { '--c': t.c || NO_SUBJECT } }, t.sub), h('span', { class: 'pd-txt' }, t.text), h('span', { class: `pd-mark m${t.m}` }, MARKS[t.m])))
+          : h('div', { class: 'pd-tr empty' }, h('span', { class: 'pd-sub' }), h('span', { class: 'pd-txt pd-none' }, '—'), h('span')))),
+    h('div', { class: 'pd-sec' }, lbl('돌아보기', x.rating ? h('span', { class: 'pd-stars' }, '★'.repeat(x.rating).split('').map(() => h('button', { class: 'on', disabled: true }, '★'))) : null),
+      h('p', { class: 'pd-lines' }, x.reflection || '')));
+  const slots = x.slots || {};
+  const tt = ttGrid((i) => [slots[i], false], () => subs);
+  tt.paintAll();
+  right.firstChild.append(h('div', { class: 'pd-sec' }, lbl('타임테이블', h('span', { class: 'pd-cnt' }, fmtMin(x.minutes))), tt.grid),
+    h('div', { class: 'pd-sec' }, lbl('과목별 시간'), subTotals(slots, subs)));
+  paintDecos([left, right], x.decos || [], opts);
+  return [left, right];
+}
 
 /* ================= 주간 보기 ================= */
 async function weekPage(view, date, u) {
@@ -327,140 +376,131 @@ async function weekPage(view, date, u) {
 }
 const stat = (k, v) => h('div', { class: 'pl-stat' }, h('span', null, k), h('b', null, v));
 
-/* ================= 책장 ================= */
+
+/* ================= 책장: 책등이 꽂힌 선반 ================= */
 async function shelfPage(view, u) {
   setTitle('플래너 북');
   let r;
-  try { r = await api.get('planner.months', u ? { u } : {}); } catch (e) { view.append(h('div', { class: 'card empty' }, e.message)); return; }
+  try { [r] = await Promise.all([api.get('planner.months', u ? { u } : {}), packsReady]); } catch (e) { view.append(h('div', { class: 'card empty' }, e.message)); return; }
   view.append(topBar('book', { date: today(), u, owner: r.owner, mine: r.mine }));
-  view.append(h('div', { class: 'pl-shelf-head' }, h('h2', null, r.mine ? '나의 플래너 책장' : `${r.owner.name}의 책장`), h('p', { class: 'small muted' }, '한 달이 한 권의 책이 돼요. 눌러서 넘겨 보세요')));
-  const shelf = h('div', { class: 'pl-shelf' });
-  for (const m of r.months) {
-    const [y, mo] = m.ym.split('-').map(Number);
-    shelf.append(h('a', { class: 'pl-bookcover', href: `#/planner/book/${m.ym}${uq(u)}`, style: { '--b': BOOK_COLORS[(mo - 1) % 12] }, 'aria-label': `${y}년 ${mo}월 플래너 북` },
-      m.current ? h('span', { class: 'pl-ribbon' }, '작성 중') : null,
-      h('span', { class: 'pl-bc-y' }, y), h('span', { class: 'pl-bc-m' }, mo, h('small', null, '월')), h('span', { class: 'pl-bc-t' }, 'STUDY PLANNER'),
-      h('span', { class: 'pl-bc-s' }, m.studyMinutes ? fmtMin(m.studyMinutes) : '새 책')));
-  }
-  view.append(h('div', { class: 'pl-shelf-wrap' }, shelf, h('div', { class: 'pl-shelf-board' })));
+  view.append(h('div', { class: 'pl-shelf-head' }, h('h2', null, r.mine ? '내 책장' : `${r.owner.name}의 책장`), h('p', { class: 'small muted' }, '한 달이 한 권이 돼요. 책을 눌러 펼쳐 보세요')));
+  const rows = [];
+  const months = [...r.months].reverse();   // 왼쪽부터 오래된 달 → 이번 달
+  for (let i = 0; i < months.length; i += 8) rows.push(months.slice(i, i + 8));
+  view.append(h('div', { class: 'sh' }, rows.map((row) => h('div', { class: 'sh-row' },
+    h('div', { class: 'sh-books' }, row.map((m, i) => {
+      const [y, mo] = m.ym.split('-').map(Number);
+      const c = BOOK_COLORS[(mo - 1) % 12];
+      return h('a', { class: 'sh-book' + (m.current ? ' cur' : ''), href: `#/planner/book/${m.ym}${uq(u)}`, style: { '--b': c, '--hgt': `${88 + ((mo * 7 + y) % 4) * 4}%`, '--tilt': i === 0 && row.length > 2 ? '4deg' : '0deg' }, 'aria-label': `${y}년 ${mo}월 플래너 북${m.current ? ', 작성 중' : ''}` },
+        h('span', { class: 'sh-band' }),
+        h('span', { class: 'sh-m' }, mo, h('small', null, '월')), h('span', { class: 'sh-y' }, y),
+        h('span', { class: 'sh-t' }, m.studyMinutes ? shortMin(m.studyMinutes) : ''),
+        m.current ? h('span', { class: 'sh-ribbon' }) : null);
+    }), row === rows[rows.length - 1] && r.mine ? h('span', { class: 'sh-next', 'aria-hidden': 'true' }, '다음 달') : null), h('div', { class: 'sh-board' })))));
 }
 
 /* ================= 한 달 플래너 북 ================= */
+function coverEl(Y, M, who, color, total, filledN) {
+  const pick = PACKS[0] && PACKS[0].items.length ? `${PACKS[0].key}/${PACKS[0].items[(M * 5 + Y) % PACKS[0].items.length].key}` : null;
+  return h('div', { class: 'bk-page bk-cloth', style: { '--b': color } },
+    h('span', { class: 'bk-elastic' }), h('span', { class: 'bk-ribbon' }),
+    h('div', { class: 'bk-plate' }, h('span', { class: 'bk-plate-y' }, `${Y}년`), h('span', { class: 'bk-plate-m' }, `${M}월`), h('span', { class: 'bk-plate-t' }, '공부 기록장')),
+    pick ? h('div', { class: 'bk-cover-st' }, sticker(pick)) : null,
+    h('div', { class: 'bk-label' }, h('span', { class: 'pd-hand' }, `${who}의 한 달`), h('small', null, `${fmtMin(total)} · ${filledN}일`)));
+}
 async function bookPage(view, ym, u) {
   const [Y, M] = ym.split('-').map(Number);
   setTitle(`${M}월 플래너 북`);
   let r;
-  try { r = await api.get('planner.month', u ? { ym, u } : { ym }); } catch (e) { view.append(h('div', { class: 'card empty' }, e.message)); return; }
+  try { [r] = await Promise.all([api.get('planner.month', u ? { ym, u } : { ym }), packsReady]); } catch (e) { view.append(h('div', { class: 'card empty' }, e.message)); return; }
   const subs = subjectMap(r.subjects);
   const color = BOOK_COLORS[(M - 1) % 12];
   const who = r.mine ? (state.me && state.me.name) : r.owner.name;
   const days = r.days;
-  const filled = days.filter((x) => x.minutes || x.todoTotal || x.reflection || x.mood);
+  const filled = days.filter((x) => x.minutes || x.todoTotal || x.reflection || x.mood || (x.decos && x.decos.length));
   const total = days.reduce((s, x) => s + x.minutes, 0);
   const best = days.reduce((b, x) => (x.minutes > (b ? b.minutes : 0) ? x : b), null);
   const goalDays = days.filter((x) => x.goalMin && x.minutes >= x.goalMin).length;
   let streak = 0, run = 0;
   for (const x of days) { if (x.minutes > 0) { run++; streak = Math.max(streak, run); } else run = 0; }
-  const bySub = {};
-  for (const x of days) for (const [sid, m] of Object.entries(x.bySubject)) bySub[sid] = (bySub[sid] || 0) + m;
-  const subRows = Object.entries(bySub).sort((a, b) => b[1] - a[1]);
+  const allSlots = {};
+  let k = 0;
+  for (const x of days) for (const sid of Object.values(x.slots || {})) allSlots[k++] = sid;
+  const opts = { photos: r.photos || {}, u };
 
-  /* 쪽 만들기 */
-  const cover = () => h('div', { class: 'bk-page bk-cover', style: { '--b': color } },
-    h('div', { class: 'bk-cover-in' }, h('span', { class: 'bk-c-label' }, 'STUDY PLANNER'), h('span', { class: 'bk-c-y' }, Y), h('span', { class: 'bk-c-m' }, `${M}월`),
-      h('span', { class: 'bk-c-line' }), h('span', { class: 'bk-c-who' }, `${who}의 한 달`),
-      h('span', { class: 'bk-c-sum' }, `${fmtMin(total)} · ${filled.length}일의 기록`)));
+  /* 쪽: 표지 / (달력 · 한 달 정리) / (그날 왼쪽 · 오른쪽)… / 뒤표지 */
   const calendarPage = () => {
     const first = parseD(`${ym}-01`).getDay();
     const maxM = Math.max(60, ...days.map((x) => x.minutes));
-    const cellsEl = [];
-    for (let i = 0; i < first; i++) cellsEl.push(h('span', { class: 'bk-cal-c empty' }));
+    const cells = [];
+    for (let i = 0; i < first; i++) cells.push(h('span', { class: 'bk-cal-c empty' }));
     for (const x of days) {
       const lv = x.minutes ? Math.min(4, Math.ceil((x.minutes / maxM) * 4)) : 0;
-      cellsEl.push(h('span', { class: `bk-cal-c lv${lv}`, style: { '--b': color } }, h('b', null, Number(x.date.slice(8))), x.mood ? h('em', null, MOODS[x.mood - 1][0]) : null, x.minutes ? h('small', null, shortMin(x.minutes)) : null));
+      cells.push(h('span', { class: `bk-cal-c lv${lv}`, style: { '--b': color } }, h('b', null, Number(x.date.slice(8))), x.mood ? h('em', null, MOODS[x.mood - 1][0]) : null, x.minutes ? h('small', null, shortMin(x.minutes)) : null));
     }
-    return h('div', { class: 'bk-page bk-paper' }, h('div', { class: 'bk-ptitle' }, `${M}월 한눈에`),
-      h('div', { class: 'bk-cal' }, WD.map((w0) => h('span', { class: 'bk-cal-w' }, w0)), cellsEl),
-      r.ddays.length ? h('div', { class: 'bk-dd' }, r.ddays.map((x) => h('span', { style: { '--c': x.color } }, `${Number(x.day.slice(5, 7))}/${Number(x.day.slice(8))} ${x.title}`))) : null,
-      h('div', { class: 'bk-foot' }, '2'));
+    return h('section', { class: 'pd-page bk-inner' }, h('div', { class: 'pd-in' },
+      h('div', { class: 'bk-title pd-hand' }, `${M}월`), lbl('한 달 달력'),
+      h('div', { class: 'bk-cal' }, WD.map((w0) => h('span', { class: 'bk-cal-w' }, w0)), cells),
+      r.ddays.length ? h('div', { class: 'pd-sec' }, lbl('이달의 D-day'), h('div', { class: 'pd-dd wrap' }, r.ddays.map((x) => h('span', { style: { '--c': x.color } }, h('b', null, `${Number(x.day.slice(5, 7))}/${Number(x.day.slice(8))}`), x.title)))) : null));
   };
-  const dayPageEl = (x, n) => {
-    const slots = x.slots || {};
-    const tt = h('div', { class: 'bk-tt' });
-    for (let rr = 0; rr < 24; rr++) {
-      const row = h('div', { class: 'bk-tt-r' }, h('span', null, hourLabel(rr)));
-      for (let c = 0; c < 6; c++) { const sid = slots[rr * 6 + c]; row.append(h('i', { style: sid !== undefined ? { background: colorOf(subs, sid) } : null })); }
-      tt.append(row);
-    }
-    const todos = [...x.tasks.map((t) => ({ text: (t.subject ? `[${t.subject}] ` : '') + t.content, done: t.done, c: t.planColor })), ...x.todos.map((t) => ({ text: t.text, done: t.done, c: colorOf(subs, t.subjectId) }))];
-    return h('div', { class: 'bk-page bk-paper bk-day' },
-      h('div', { class: 'bk-dhead' }, h('span', { class: 'bk-dn' }, Number(x.date.slice(8))), h('span', { class: 'bk-dw' }, `${M}월 · ${wd(x.date)}`), h('span', { class: 'grow' }),
-        x.mood ? h('span', { class: 'bk-mood' }, MOODS[x.mood - 1][0]) : null),
-      h('div', { class: 'bk-dbody' },
-        h('div', { class: 'bk-dleft' },
-          h('div', { class: 'bk-lbl' }, '공부 시간'), h('div', { class: 'bk-big' }, fmtMin(x.minutes), x.goalMin ? h('small', null, ` / ${fmtMin(x.goalMin)}`) : null),
-          h('div', { class: 'bk-lbl' }, '할 일', x.todoTotal ? ` ${x.todoDone}/${x.todoTotal}` : ''),
-          h('ul', { class: 'bk-todos' }, todos.length ? todos.slice(0, 12).map((t) => h('li', { class: t.done ? 'done' : '' }, h('i', { style: { '--c': t.c || NO_SUBJECT } }), t.text)) : h('li', { class: 'none' }, '—')),
-          h('div', { class: 'bk-lbl' }, '돌아보기', x.rating ? h('span', { class: 'bk-stars' }, ' ' + '★'.repeat(x.rating) + '☆'.repeat(5 - x.rating)) : null),
-          h('p', { class: 'bk-reflect' }, x.reflection || '')),
-        tt),
-      h('div', { class: 'bk-foot' }, String(n)));
-  };
-  const summaryPage = (n) => h('div', { class: 'bk-page bk-paper' }, h('div', { class: 'bk-ptitle' }, `${M}월을 마치며`),
-    h('div', { class: 'bk-sum' },
-      sumItem('총 공부', fmtMin(total)), sumItem('공부한 날', `${days.filter((x) => x.minutes).length}일`), sumItem('최장 연속', `${streak}일`),
-      sumItem('목표 달성', `${goalDays}일`), sumItem('최고의 날', best ? `${Number(best.date.slice(8))}일 · ${fmtMin(best.minutes)}` : '—'),
-      sumItem('할 일 완료', (() => { const a = days.reduce((s, x) => s + x.todoTotal, 0); return a ? `${Math.round((days.reduce((s, x) => s + x.todoDone, 0) / a) * 100)}%` : '—'; })())),
-    subRows.length ? h('div', { class: 'bk-subs' }, subRows.map(([sid, m]) => { const s = subs.get(Number(sid)); return h('div', null, h('span', null, h('i', { style: { '--c': colorOf(subs, Number(sid)) } }), s ? s.name : '과목 없음'),
-      h('span', { class: 'bk-subs-t' }, h('i', { style: { width: `${(m / subRows[0][1]) * 100}%`, background: colorOf(subs, Number(sid)) } })), h('b', null, fmtMin(m))); })) : null,
-    h('div', { class: 'bk-end' }, '수고했어요, 다음 달도 화이팅!'), h('div', { class: 'bk-foot' }, String(n)));
-  const pages = [cover, calendarPage, ...filled.map((x) => (n) => dayPageEl(x, n)), (n) => summaryPage(n)];
-  const pageEl = (i) => (i >= 0 && i < pages.length ? pages[i](i + 1) : h('div', { class: 'bk-page bk-blank' }));
+  const statsPage = () => h('section', { class: 'pd-page bk-inner' }, h('div', { class: 'pd-in' },
+    h('div', { class: 'bk-title pd-hand' }, '한 달 정리'),
+    h('div', { class: 'bk-stats' },
+      bkStat('총 공부', fmtMin(total)), bkStat('공부한 날', `${days.filter((x) => x.minutes).length}일`), bkStat('가장 길게 이어서', `${streak}일`),
+      bkStat('목표 달성', `${goalDays}일`), bkStat('가장 많이 한 날', best ? `${Number(best.date.slice(8))}일 ${fmtMin(best.minutes)}` : '—'),
+      bkStat('할 일 끝냄', (() => { const a = days.reduce((s, x) => s + x.todoTotal, 0); return a ? `${Math.round((days.reduce((s, x) => s + x.todoDone, 0) / a) * 100)}%` : '—'; })())),
+    h('div', { class: 'pd-sec' }, lbl('과목별 시간'), subTotals(allSlots, subs)),
+    h('p', { class: 'bk-note pd-hand' }, filled.length ? '이번 달도 수고했어요. 다음 장부터 하루하루가 이어져요' : '아직 기록이 없어요. 하루 플래너를 쓰면 여기부터 한 장씩 쌓여요')));
+  const backCover = () => h('div', { class: 'bk-page bk-cloth back', style: { '--b': color } }, h('span', { class: 'bk-elastic' }), h('span', { class: 'bk-back-t' }, '공부 친구'));
+  const pages = [() => coverEl(Y, M, who, color, total, filled.length), calendarPage, statsPage];
+  for (const x of filled) { let pair = null; const get = (i) => { if (!pair) pair = staticSpread(x, subs, { ...opts, ddays: r.ddays.filter((y) => y.day >= x.date) }); return pair[i]; }; pages.push(() => get(0), () => get(1)); }
+  pages.push(backCover);
+  const pageEl = (i) => (i >= 0 && i < pages.length ? pages[i]() : h('div', { class: 'bk-blank' }));
 
-  /* 넘겨 보기: 넓은 화면은 두 쪽, 휴대폰은 한 쪽 */
+  /* 넘겨 보기: 넓은 화면은 펼침면(왼쪽·오른쪽), 휴대폰은 한 쪽씩 */
   const wide = () => window.matchMedia('(min-width: 900px)').matches;
-  let at = 0;   // 넓은 화면: 왼쪽 쪽 번호(표지는 오른쪽에 혼자), 좁은 화면: 지금 쪽
+  let at = 0;
   const stage = h('div', { class: 'bk-stage' });
   const counter = h('span', { class: 'small muted' });
-  const prevB = h('button', { type: 'button', class: 'btn icon bk-nav', 'aria-label': '앞 쪽', onclick: () => go(-1) }, icon('back'));
-  const nextB = h('button', { type: 'button', class: 'btn icon bk-nav', 'aria-label': '다음 쪽', onclick: () => go(1) }, icon('next'));
-  function spread() { return wide() ? (at === 0 ? [-1, 0] : [at, at + 1]) : [at]; }
+  const prevB = h('button', { type: 'button', class: 'btn icon bk-nav', 'aria-label': '앞 장', onclick: () => go(-1) }, icon('back'));
+  const nextB = h('button', { type: 'button', class: 'btn icon bk-nav', 'aria-label': '다음 장', onclick: () => go(1) }, icon('next'));
+  const spreadIdx = () => (wide() ? (at === 0 ? [-1, 0] : [at, at + 1]) : [at]);
   function render(dir = 0) {
-    const [a, b] = spread();
-    const book = h('div', { class: 'bk-book' + (wide() ? ' two' : ' one') + (dir ? (dir > 0 ? ' turn-next' : ' turn-prev') : '') }, ...(wide() ? [pageEl(a), pageEl(b)] : [pageEl(a)]));
+    const idx = spreadIdx();
+    const book = h('div', { class: 'bk-book' + (wide() ? ' two' : ' one') + (dir > 0 ? ' turn-next' : dir < 0 ? ' turn-prev' : '') + (idx[0] === -1 ? ' closed' : '') }, ...idx.map(pageEl));
     stage.replaceChildren(book);
     const last = pages.length - 1;
     prevB.disabled = at === 0;
     nextB.disabled = wide() ? (at === 0 ? last < 1 : at + 1 >= last) : at >= last;
-    counter.textContent = wide() ? (at === 0 ? `표지 / ${pages.length}쪽` : `${a + 1}–${Math.min(b + 1, pages.length)} / ${pages.length}쪽`) : `${at + 1} / ${pages.length}쪽`;
+    const dayOf = (i) => { const n = i - 3; return n >= 0 && n < filled.length * 2 ? filled[Math.floor(n / 2)].date : null; };
+    const dd = dayOf(idx[idx.length - 1]) || dayOf(idx[0]);
+    counter.textContent = dd ? `${Number(dd.slice(5, 7))}월 ${Number(dd.slice(8))}일` : at === 0 ? '표지' : at >= last - 1 ? '뒤표지' : '한 달 정리';
   }
   function go(dir) {
     if (wide()) { if (dir > 0) at = at === 0 ? 1 : at + 2; else at = at <= 1 ? 0 : at - 2; at = Math.max(0, Math.min(at, pages.length - 1)); }
     else at = Math.max(0, Math.min(pages.length - 1, at + dir));
     render(dir);
   }
-  const onKey = (e) => { if (e.target.closest && e.target.closest('input,textarea')) return; if (e.key === 'ArrowRight') go(1); if (e.key === 'ArrowLeft') go(-1); };
+  const onKey = (e) => { if (e.target.closest && e.target.closest('input,textarea,select')) return; if (e.key === 'ArrowRight') go(1); if (e.key === 'ArrowLeft') go(-1); };
   document.addEventListener('keydown', onKey);
   let sx = null;
   stage.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; }, { passive: true });
   stage.addEventListener('touchend', (e) => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1); });
-  const onResize = () => { at = wide() && at > 0 && at % 2 === 0 ? at - 1 : at; render(); };
+  const onResize = () => { if (wide() && at > 0 && at % 2 === 0) at -= 1; render(); };
   window.addEventListener('resize', onResize);
 
-  /* PDF 로 저장: 모든 쪽을 차례로 놓고 인쇄 창을 열어요 (인쇄 창에서 'PDF로 저장') */
   function printBook() {
-    const all = h('div', { class: 'bk-print' }, pages.map((f, i) => f(i + 1)));
+    const all = h('div', { class: 'bk-print' }, pages.map((f) => f()));
     document.body.append(all); document.body.classList.add('bk-printing');
     const done = () => { all.remove(); document.body.classList.remove('bk-printing'); window.removeEventListener('afterprint', done); };
     window.addEventListener('afterprint', done);
-    setTimeout(() => { window.print(); setTimeout(done, 1000); }, 50);
+    setTimeout(() => { window.print(); setTimeout(done, 1000); }, 300);
   }
   view.append(topBar('book', { date: `${ym}-01`, u, owner: r.owner, mine: r.mine }),
-    h('div', { class: 'bk-bar' }, h('a', { class: 'btn ghost sm', href: `#/planner/books${uq(u)}` }, icon('back'), '책장'), h('b', null, `${Y}년 ${M}월`), h('span', { class: 'grow' }), counter,
+    h('div', { class: 'bk-bar' }, h('a', { class: 'btn ghost sm', href: `#/planner/books${uq(u)}` }, icon('back'), '책장'), h('b', null, `${Y}년 ${M}월`), counter, h('span', { class: 'grow' }),
       h('button', { type: 'button', class: 'btn sm', onclick: printBook }, icon('download'), 'PDF로 저장')),
-    h('div', { class: 'bk-wrap' }, prevB, stage, nextB),
-    filled.length ? null : h('p', { class: 'small muted', style: { 'text-align': 'center' } }, '이 달은 아직 기록이 없어요. 하루 플래너를 쓰면 여기 한 쪽씩 쌓여요'));
+    h('div', { class: 'bk-wrap' }, prevB, stage, nextB));
   render();
   return () => { document.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); };
 }
-const sumItem = (k, v) => h('div', { class: 'bk-sum-i' }, h('span', null, k), h('b', null, v));
+const bkStat = (k, v) => h('div', { class: 'bk-stat' }, h('span', null, k), h('b', { class: 'pd-hand' }, v));

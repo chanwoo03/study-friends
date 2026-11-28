@@ -10,6 +10,7 @@ Thumbs.db
 uploads/avatars/*
 !uploads/avatars/.gitkeep
 uploads/journal/*
+uploads/planner/*
 !uploads/journal/.htaccess
 uploads/proofs/*
 !uploads/proofs/.htaccess
@@ -20,3 +21,4 @@ uploads/messages/*
 fcm-key.json
 *service-account*.json
 *firebase-adminsdk*.json
+!uploads/planner/.htaccess

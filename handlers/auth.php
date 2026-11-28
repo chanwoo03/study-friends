@@ -136,6 +136,7 @@ route('me.delete', 'POST', function (int $me) {
     if ($hash && !password_verify((string)arg('password', ''), (string)$hash)) fail(400, '비밀번호가 맞지 않아요');
     $av = val('SELECT avatar FROM users WHERE id = ?', [$me]);
     if (function_exists('journal_delete_user_files')) journal_delete_user_files($me);
+    if (function_exists('planner_delete_user_files')) planner_delete_user_files($me);
     if (function_exists('proof_delete_user_files')) proof_delete_user_files($me);
     if (function_exists('msg_delete_user_files')) msg_delete_user_files($me);
     q('DELETE FROM users WHERE id = ?', [$me]);

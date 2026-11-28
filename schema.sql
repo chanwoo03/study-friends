@@ -312,6 +312,7 @@ CREATE TABLE IF NOT EXISTS planner_days (
   rating     TINYINT UNSIGNED NULL,
   reflection VARCHAR(500) NOT NULL DEFAULT '',
   blocks     TEXT         NULL,
+  decos      TEXT         NULL,
   updated_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, day),
   CONSTRAINT fk_pd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -340,4 +341,18 @@ CREATE TABLE IF NOT EXISTS ddays (
   created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_user_day (user_id, day),
   CONSTRAINT fk_dd_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 플래너 꾸미기 사진 (v9, 파일은 uploads/planner, 직접 열 수 없어요)
+CREATE TABLE IF NOT EXISTS planner_photos (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT UNSIGNED NOT NULL,
+  day        DATE         NOT NULL,
+  file       VARCHAR(80)  NOT NULL,
+  thumb      VARCHAR(80)  NOT NULL,
+  w          SMALLINT UNSIGNED NOT NULL,
+  h          SMALLINT UNSIGNED NOT NULL,
+  created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_user_day (user_id, day),
+  CONSTRAINT fk_pp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

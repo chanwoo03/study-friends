@@ -76,8 +76,47 @@ function ddays_of(int $uid, string $from): array {
     return array_map(fn($d) => ['id' => (int)$d['id'], 'title' => $d['title'], 'day' => $d['day'], 'color' => $d['color']],
         rows('SELECT * FROM ddays WHERE user_id = ? AND day >= ? ORDER BY day, id LIMIT 20', [$uid, $from]));
 }
+/* 할 일 표시: 0 아직 · 1 ○ 다 함 · 2 △ 조금 함 · 3 × 못 함 */
 function todos_out(array $rows): array {
-    return array_map(fn($t) => ['id' => (int)$t['id'], 'text' => $t['text'], 'done' => (bool)$t['done'], 'subjectId' => $t['subject_id'] ? (int)$t['subject_id'] : null], $rows);
+    return array_map(fn($t) => ['id' => (int)$t['id'], 'text' => $t['text'], 'state' => (int)$t['done'], 'done' => (int)$t['done'] === 1, 'subjectId' => $t['subject_id'] ? (int)$t['subject_id'] : null], $rows);
+}
+
+/* ===== 꾸미기 =====
+   한 쪽 너비를 100 으로 보고 위치·크기를 저장해요 (휴대폰·컴퓨터·책에서 같은 자리에 보이게)
+   k: st 그림 이모티콘 · em 이모지 · tp 마스킹테이프 · sp 도장 · ph 사진 */
+const DECO_TAPES = ['mint-dot', 'lemon-stripe', 'pink-grid', 'lav-plain', 'kraft', 'sky-check', 'peach-flower', 'navy-star'];
+const DECO_STAMPS = ['great', 'done', 'focus', 'perfect', 'fighting', 'rest'];
+function clean_decos($in, int $uid, string $date): array {
+    if (!is_array($in)) return [];
+    $photos = array_flip(array_map('intval', array_column(rows('SELECT id FROM planner_photos WHERE user_id = ? AND day = ?', [$uid, $date]), 'id')));
+    $out = [];
+    foreach (array_slice($in, 0, 40) as $d) {
+        if (!is_array($d)) continue;
+        $k = (string)($d['k'] ?? ''); $v = $d['v'] ?? '';
+        if ($k === 'st') { $v = (string)$v; if (!function_exists('sticker_ok') || !sticker_ok($v)) continue; }
+        elseif ($k === 'em') { $v = mb_substr(trim((string)$v), 0, 8); if ($v === '' || preg_match('/[<>&"\'\x5c]/', $v) !== 0) continue; }
+        elseif ($k === 'tp') { if (!in_array($v, DECO_TAPES, true)) continue; }
+        elseif ($k === 'sp') { if (!in_array($v, DECO_STAMPS, true)) continue; }
+        elseif ($k === 'ph') { $v = (int)$v; if (!isset($photos[$v])) continue; }
+        else continue;
+        $num = fn($key, $lo, $hi, $def) => max($lo, min($hi, round((float)($d[$key] ?? $def), 2)));
+        $out[] = ['k' => $k, 'v' => $v, 'p' => (int)($d['p'] ?? 0) === 1 ? 1 : 0,
+                  'x' => $num('x', -10, 105, 50), 'y' => $num('y', -10, 200, 50), 'w' => $num('w', 4, 90, 20), 'r' => $num('r', -180, 180, 0), 'z' => (int)$num('z', 0, 99, 1)];
+    }
+    return $out;
+}
+function decos_of(?string $j): array { $d = json_decode((string)$j, true); return is_array($d) ? $d : []; }
+function planner_photos_of(int $uid, string $from, string $to): array {
+    $out = [];
+    foreach (rows('SELECT id, day, w, h FROM planner_photos WHERE user_id = ? AND day BETWEEN ? AND ?', [$uid, $from, $to]) as $p) $out[(int)$p['id']] = ['id' => (int)$p['id'], 'day' => $p['day'], 'w' => (int)$p['w'], 'h' => (int)$p['h']];
+    return $out;
+}
+function planner_dir(): string { return dirname(__DIR__) . '/uploads/planner'; }
+function planner_delete_photo_files(array $p): void {
+    foreach (['file', 'thumb'] as $k) { $n = basename((string)$p[$k]); if (preg_match('/^[A-Za-z0-9_]+\.jpg$/', $n) && is_file(planner_dir() . "/$n")) @unlink(planner_dir() . "/$n"); }
+}
+function planner_delete_user_files(int $uid): void {
+    foreach (rows('SELECT * FROM planner_photos WHERE user_id = ?', [$uid]) as $p) planner_delete_photo_files($p);
 }
 
 /* 하루 한 장 */
@@ -107,6 +146,7 @@ route('planner.get', 'GET', function (int $me) {
         'mood' => isset($d['mood']) ? (int)$d['mood'] : null,
         'rating' => isset($d['rating']) ? (int)$d['rating'] : null,
         'reflection' => $d['reflection'] ?? '',
+        'decos' => decos_of($d['decos'] ?? null), 'photos' => array_values(planner_photos_of($uid, $date, $date)),
         'blocks' => (object)$manual, 'auto' => (object)$auto, 'minutes' => $sum['minutes'], 'bySubject' => $sum['bySubject'],
         'studySeconds' => study_seconds([$uid], $date, $date)[$uid] ?? 0,
         'studyingSince' => $live, 'studyingSubject' => $liveSubject !== null ? (int)$liveSubject : null,
@@ -161,7 +201,9 @@ route('planner.todo_add', 'POST', function (int $me) {
     return ['todo' => todos_out([row('SELECT * FROM planner_todos WHERE id = ?', [(int)db()->lastInsertId()])])[0]];
 });
 route('planner.todo_toggle', 'POST', function (int $me) {
-    q('UPDATE planner_todos SET done = ? WHERE id = ? AND user_id = ?', [arg('done', false) ? 1 : 0, int_arg('id'), $me]);
+    $state = arg('state', null);
+    $state = $state === null ? (arg('done', false) ? 1 : 0) : max(0, min(3, (int)$state));
+    q('UPDATE planner_todos SET done = ? WHERE id = ? AND user_id = ?', [$state, int_arg('id'), $me]);
     return ['ok' => true];
 });
 route('planner.todo_edit', 'POST', function (int $me) {
@@ -200,6 +242,55 @@ route('planner.subject_del', 'POST', function (int $me) {
     q('DELETE FROM planner_subjects WHERE id = ? AND user_id = ?', [$id, $me]);
     q('UPDATE study_sessions SET subject_id = NULL WHERE user_id = ? AND subject_id = ?', [$me, $id]);
     return ['subjects' => subjects_of($me)];
+});
+
+/* 꾸미기 저장: 그날 붙인 것 전체를 보내요 */
+route('planner.decos', 'POST', function (int $me) {
+    $date = date_arg('date');
+    $decos = clean_decos(arg('decos', []), $me, $date);
+    q('INSERT INTO planner_days (user_id, day, decos) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE decos = VALUES(decos)', [$me, $date, $decos ? json_encode($decos, JSON_UNESCAPED_UNICODE) : null]);
+    return ['decos' => $decos];
+});
+/* 꾸미기 사진 올리기: 화면에서 JPEG 로 줄여서 큰 것·작은 것 두 장 */
+route('planner.photo_add', 'POST', function (int $me) {
+    $date = date_arg('date');
+    if ((int)val('SELECT COUNT(*) FROM planner_photos WHERE user_id = ? AND day = ?', [$me, $date]) >= 8) fail(400, '하루에 사진은 8장까지 붙일 수 있어요');
+    [$big, $w, $hh] = decode_jpeg((string)arg('image', ''), 900 * 1024, 1600);
+    [$small] = decode_jpeg((string)arg('thumb', ''), 200 * 1024, 640);
+    $dir = planner_dir();
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) fail(500, '사진을 저장할 폴더를 만들지 못했어요 (uploads 폴더 권한 확인)');
+    $base = $me . '_' . bin2hex(random_bytes(8));
+    if (@file_put_contents("$dir/$base.jpg", $big) === false || @file_put_contents("$dir/{$base}_t.jpg", $small) === false) fail(500, '사진을 저장하지 못했어요 (uploads 폴더 권한 확인)');
+    q('INSERT INTO planner_photos (user_id, day, file, thumb, w, h) VALUES (?, ?, ?, ?, ?, ?)', [$me, $date, "$base.jpg", "{$base}_t.jpg", $w, $hh]);
+    $id = (int)db()->lastInsertId();
+    return ['photo' => ['id' => $id, 'day' => $date, 'w' => $w, 'h' => $hh]];
+});
+route('planner.photo_del', 'POST', function (int $me) {
+    $p = row('SELECT * FROM planner_photos WHERE id = ? AND user_id = ?', [int_arg('id'), $me]);
+    if (!$p) fail(404, '사진을 찾을 수 없어요');
+    planner_delete_photo_files($p);
+    q('DELETE FROM planner_photos WHERE id = ?', [$p['id']]);
+    // 붙여 둔 자리도 떼어 내요
+    $d = row('SELECT decos FROM planner_days WHERE user_id = ? AND day = ?', [$me, $p['day']]);
+    if ($d) {
+        $left = array_values(array_filter(decos_of($d['decos']), fn($x) => !($x['k'] === 'ph' && (int)$x['v'] === (int)$p['id'])));
+        q('UPDATE planner_days SET decos = ? WHERE user_id = ? AND day = ?', [$left ? json_encode($left, JSON_UNESCAPED_UNICODE) : null, $me, $p['day']]);
+    }
+    return ['ok' => true];
+});
+/* 사진 보기: 내 것, 또는 플래너를 친구 공개한 친구 것 */
+route('planner.photo', 'GET', function (int $me) {
+    $p = row('SELECT p.*, u.planner_vis FROM planner_photos p JOIN users u ON u.id = p.user_id WHERE p.id = ?', [int_arg('id')]);
+    if (!$p || ((int)$p['user_id'] !== $me && !($p['planner_vis'] === 'friends' && is_friend($me, (int)$p['user_id'])))) fail(404, '사진을 찾을 수 없어요');
+    $name = basename((string)(($_GET['size'] ?? '') === 'full' ? $p['file'] : $p['thumb']));
+    $f = planner_dir() . '/' . $name;
+    if (!preg_match('/^[A-Za-z0-9_]+\.jpg$/', $name) || !is_file($f)) fail(404, '사진 파일이 없어요');
+    header('Content-Type: image/jpeg');
+    header('Cache-Control: private, max-age=604800');
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Length: ' . filesize($f));
+    readfile($f);
+    exit;
 });
 
 /* 플래너 공개 범위 */
@@ -256,8 +347,9 @@ function planner_range(int $uid, int $me, string $from, string $to, bool $detail
                 'goalMin' => isset($d['goal_min']) ? (int)$d['goal_min'] : null, 'mood' => isset($d['mood']) ? (int)$d['mood'] : null,
                 'rating' => isset($d['rating']) ? (int)$d['rating'] : null,
                 'todoDone' => count(array_filter($td, fn($x) => (int)$x['done'] === 1)) + count(array_filter($tk, fn($x) => !empty($x['done']))),
+                'decoCount' => count(decos_of($d['decos'] ?? null)),
                 'todoTotal' => count($td) + count($tk)];
-        if ($detail) $row += ['reflection' => $d['reflection'] ?? '', 'slots' => (object)$sum['merged'], 'todos' => todos_out($td),
+        if ($detail) $row += ['reflection' => $d['reflection'] ?? '', 'slots' => (object)$sum['merged'], 'todos' => todos_out($td), 'decos' => decos_of($d['decos'] ?? null),
                               'tasks' => array_map(fn($x) => ['content' => $x['content'], 'subject' => $x['subject'] ?? '', 'done' => !empty($x['done']), 'planColor' => $x['planColor'] ?? null], $tk)];
         $out[] = $row;
     }
@@ -275,7 +367,7 @@ route('planner.month', 'GET', function (int $me) {
     $ym = (string)arg('ym', date('Y-m'));
     if (!preg_match('/^(\d{4})-(\d{2})$/', $ym, $m) || !checkdate((int)$m[2], 1, (int)$m[1])) fail(400, '달이 잘못됐어요');
     $from = "$ym-01"; $to = date('Y-m-t', strtotime($from));
-    return ['ym' => $ym, 'days' => planner_range($uid, $me, $from, $to, true), 'subjects' => subjects_of($uid),
+    return ['ym' => $ym, 'days' => planner_range($uid, $me, $from, $to, true), 'subjects' => subjects_of($uid), 'photos' => (object)planner_photos_of($uid, $from, $to),
             'owner' => users_by_ids([$uid])[$uid] ?? null, 'mine' => $uid === $me, 'today' => date('Y-m-d'),
             'ddays' => array_values(array_filter(ddays_of($uid, $from), fn($x) => $x['day'] <= $to))];
 });
