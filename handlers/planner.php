@@ -293,6 +293,22 @@ route('planner.photo', 'GET', function (int $me) {
     exit;
 });
 
+/* 플래너 북 표지: 디자인 8종 중 하나 + 좌우명 (달마다) */
+const COVER_STYLES = ['lavender', 'strawberry', 'mint', 'lemon', 'night', 'oat', 'matcha', 'mono'];
+function cover_of(int $uid, string $ym): array {
+    $c = row('SELECT style, motto FROM planner_covers WHERE user_id = ? AND ym = ?', [$uid, $ym]);
+    return $c ? ['style' => $c['style'], 'motto' => $c['motto']] : ['style' => COVER_STYLES[((int)substr($ym, 5, 2) - 1) % count(COVER_STYLES)], 'motto' => ''];
+}
+route('planner.cover_save', 'POST', function (int $me) {
+    $ym = (string)arg('ym', '');
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $ym)) fail(400, '달이 잘못됐어요');
+    $style = (string)arg('style', '');
+    if (!in_array($style, COVER_STYLES, true)) fail(400, '없는 표지예요');
+    $motto = str_arg('motto', 40);
+    q('INSERT INTO planner_covers (user_id, ym, style, motto) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE style = VALUES(style), motto = VALUES(motto)', [$me, $ym, $style, $motto]);
+    return ['cover' => cover_of($me, $ym)];
+});
+
 /* 플래너 공개 범위 */
 route('planner.vis', 'POST', function (int $me) {
     $v = arg('vis', 'private') === 'friends' ? 'friends' : 'private';
@@ -368,7 +384,7 @@ route('planner.month', 'GET', function (int $me) {
     if (!preg_match('/^(\d{4})-(\d{2})$/', $ym, $m) || !checkdate((int)$m[2], 1, (int)$m[1])) fail(400, '달이 잘못됐어요');
     $from = "$ym-01"; $to = date('Y-m-t', strtotime($from));
     return ['ym' => $ym, 'days' => planner_range($uid, $me, $from, $to, true), 'subjects' => subjects_of($uid), 'photos' => (object)planner_photos_of($uid, $from, $to),
-            'owner' => users_by_ids([$uid])[$uid] ?? null, 'mine' => $uid === $me, 'today' => date('Y-m-d'),
+            'owner' => users_by_ids([$uid])[$uid] ?? null, 'mine' => $uid === $me, 'today' => date('Y-m-d'), 'cover' => cover_of($uid, $ym),
             'ddays' => array_values(array_filter(ddays_of($uid, $from), fn($x) => $x['day'] <= $to))];
 });
 /* 책장: 기록이 있는 달들 */
@@ -384,5 +400,7 @@ route('planner.months', 'GET', function (int $me) {
     $cur = date('Y-m');
     $list = array_map(fn($r) => ['ym' => $r['ym'], 'entries' => (int)$r['n'], 'studyMinutes' => $mins[$r['ym']] ?? 0, 'current' => $r['ym'] === $cur], $rows);
     if (!array_filter($list, fn($x) => $x['current'])) array_unshift($list, ['ym' => $cur, 'entries' => 0, 'studyMinutes' => 0, 'current' => true]);
+    foreach ($list as &$m) $m['cover'] = cover_of($uid, $m['ym']);
+    unset($m);
     return ['months' => $list, 'owner' => users_by_ids([$uid])[$uid] ?? null, 'mine' => $uid === $me];
 });

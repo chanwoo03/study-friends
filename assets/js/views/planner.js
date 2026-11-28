@@ -390,9 +390,8 @@ async function shelfPage(view, u) {
   view.append(h('div', { class: 'sh' }, rows.map((row) => h('div', { class: 'sh-row' },
     h('div', { class: 'sh-books' }, row.map((m, i) => {
       const [y, mo] = m.ym.split('-').map(Number);
-      const c = BOOK_COLORS[(mo - 1) % 12];
-      return h('a', { class: 'sh-book' + (m.current ? ' cur' : ''), href: `#/planner/book/${m.ym}${uq(u)}`, style: { '--b': c, '--hgt': `${88 + ((mo * 7 + y) % 4) * 4}%`, '--tilt': i === 0 && row.length > 2 ? '4deg' : '0deg' }, 'aria-label': `${y}년 ${mo}월 플래너 북${m.current ? ', 작성 중' : ''}` },
-        h('span', { class: 'sh-band' }),
+      return h('a', { class: `sh-book cv-${m.cover.style}` + (m.current ? ' cur' : ''), href: `#/planner/book/${m.ym}${uq(u)}`, style: { '--hgt': `${88 + ((mo * 7 + y) % 4) * 4}%`, '--tilt': i === 0 && row.length > 2 ? '4deg' : '0deg' }, 'aria-label': `${y}년 ${mo}월 플래너 북${m.current ? ', 작성 중' : ''}` },
+        h('span', { class: 'cv-pat', 'aria-hidden': 'true' }),
         h('span', { class: 'sh-m' }, mo, h('small', null, '월')), h('span', { class: 'sh-y' }, y),
         h('span', { class: 'sh-t' }, m.studyMinutes ? shortMin(m.studyMinutes) : ''),
         m.current ? h('span', { class: 'sh-ribbon' }) : null);
@@ -400,13 +399,30 @@ async function shelfPage(view, u) {
 }
 
 /* ================= 한 달 플래너 북 ================= */
-function coverEl(Y, M, who, color, total, filledN) {
-  const pick = PACKS[0] && PACKS[0].items.length ? `${PACKS[0].key}/${PACKS[0].items[(M * 5 + Y) % PACKS[0].items.length].key}` : null;
-  return h('div', { class: 'bk-page bk-cloth', style: { '--b': color } },
-    h('span', { class: 'bk-elastic' }), h('span', { class: 'bk-ribbon' }),
-    h('div', { class: 'bk-plate' }, h('span', { class: 'bk-plate-y' }, `${Y}년`), h('span', { class: 'bk-plate-m' }, `${M}월`), h('span', { class: 'bk-plate-t' }, '공부 기록장')),
-    pick ? h('div', { class: 'bk-cover-st' }, sticker(pick)) : null,
-    h('div', { class: 'bk-label' }, h('span', { class: 'pd-hand' }, `${who}의 한 달`), h('small', null, `${fmtMin(total)} · ${filledN}일`)));
+/* 표지 디자인 8종: 납작한 색 + 큼직한 숫자 + 패턴 하나 (달마다 고를 수 있어요) */
+const COVERS = [
+  ['lavender', '라벤더 체크'], ['strawberry', '딸기우유'], ['mint', '민트 물결'], ['lemon', '레몬 무지개'],
+  ['night', '밤하늘 모눈'], ['oat', '오트밀 줄무늬'], ['matcha', '말차 데이지'], ['mono', '모노 핑크'],
+];
+function coverEl(Y, M, who, cover, sub) {
+  return h('div', { class: `bk-page cv cv-${cover.style}` },
+    h('span', { class: 'cv-pat', 'aria-hidden': 'true' }),
+    h('div', { class: 'cv-top' }, h('span', null, Y), h('span', null, '공부 기록')),
+    h('div', { class: 'cv-num', 'aria-hidden': 'true' }, M),
+    h('div', { class: 'cv-name' }, h('b', null, `${who}의 ${M}월`), cover.motto ? h('span', { class: 'cv-motto' }, cover.motto) : null, sub ? h('small', null, sub) : null));
+}
+function coverModal(ym, cur, who, onSave) {
+  const [Y, M] = ym.split('-').map(Number);
+  let style = cur.style;
+  const grid = h('div', { class: 'cv-grid' });
+  const paint = () => grid.replaceChildren(...COVERS.map(([k, label]) => h('button', { type: 'button', class: 'cv-opt' + (k === style ? ' on' : ''), 'aria-pressed': String(k === style), onclick: () => { style = k; paint(); } },
+    coverEl(Y, M, who, { style: k, motto: '' }), h('span', null, label))));
+  paint();
+  const motto = h('input', { class: 'input', maxlength: '40', value: cur.motto || '', placeholder: '예: 꾸준함이 이긴다', 'aria-label': '좌우명' });
+  const m = modal(h('form', { class: 'form', onsubmit: async (e) => {
+    e.preventDefault();
+    try { const r = await api.post('planner.cover_save', { ym, style, motto: motto.value.trim() }); m.close(); onSave(r.cover); toast('표지를 바꿨어요'); } catch (er) { errToast(er); }
+  } }, h('h2', null, `${M}월 표지`), grid, h('label', { class: 'field' }, '표지에 쓸 한 줄 (선택)', motto), h('div', { class: 'row end' }, h('button', { type: 'submit', class: 'btn primary' }, '이 표지로 하기'))), { wide: true });
 }
 async function bookPage(view, ym, u) {
   const [Y, M] = ym.split('-').map(Number);
@@ -414,6 +430,7 @@ async function bookPage(view, ym, u) {
   let r;
   try { [r] = await Promise.all([api.get('planner.month', u ? { ym, u } : { ym }), packsReady]); } catch (e) { view.append(h('div', { class: 'card empty' }, e.message)); return; }
   const subs = subjectMap(r.subjects);
+  let cover = r.cover;
   const color = BOOK_COLORS[(M - 1) % 12];
   const who = r.mine ? (state.me && state.me.name) : r.owner.name;
   const days = r.days;
@@ -451,8 +468,8 @@ async function bookPage(view, ym, u) {
       bkStat('할 일 끝냄', (() => { const a = days.reduce((s, x) => s + x.todoTotal, 0); return a ? `${Math.round((days.reduce((s, x) => s + x.todoDone, 0) / a) * 100)}%` : '—'; })())),
     h('div', { class: 'pd-sec' }, lbl('과목별 시간'), subTotals(allSlots, subs)),
     h('p', { class: 'bk-note pd-hand' }, filled.length ? '이번 달도 수고했어요. 다음 장부터 하루하루가 이어져요' : '아직 기록이 없어요. 하루 플래너를 쓰면 여기부터 한 장씩 쌓여요')));
-  const backCover = () => h('div', { class: 'bk-page bk-cloth back', style: { '--b': color } }, h('span', { class: 'bk-elastic' }), h('span', { class: 'bk-back-t' }, '공부 친구'));
-  const pages = [() => coverEl(Y, M, who, color, total, filled.length), calendarPage, statsPage];
+  const backCover = () => h('div', { class: `bk-page cv cv-back cv-${cover.style}` }, h('span', { class: 'cv-pat', 'aria-hidden': 'true' }), h('span', { class: 'cv-back-t' }, '공부 친구'));
+  const pages = [() => coverEl(Y, M, who, cover, `${fmtMin(total)} · ${filled.length}일의 기록`), calendarPage, statsPage];
   for (const x of filled) { let pair = null; const get = (i) => { if (!pair) pair = staticSpread(x, subs, { ...opts, ddays: r.ddays.filter((y) => y.day >= x.date) }); return pair[i]; }; pages.push(() => get(0), () => get(1)); }
   pages.push(backCover);
   const pageEl = (i) => (i >= 0 && i < pages.length ? pages[i]() : h('div', { class: 'bk-blank' }));
@@ -498,6 +515,7 @@ async function bookPage(view, ym, u) {
   }
   view.append(topBar('book', { date: `${ym}-01`, u, owner: r.owner, mine: r.mine }),
     h('div', { class: 'bk-bar' }, h('a', { class: 'btn ghost sm', href: `#/planner/books${uq(u)}` }, icon('back'), '책장'), h('b', null, `${Y}년 ${M}월`), counter, h('span', { class: 'grow' }),
+      r.mine ? h('button', { type: 'button', class: 'btn sm', onclick: () => coverModal(ym, cover, who, (c) => { cover = c; render(); }) }, icon('draw'), '표지 바꾸기') : null,
       h('button', { type: 'button', class: 'btn sm', onclick: printBook }, icon('download'), 'PDF로 저장')),
     h('div', { class: 'bk-wrap' }, prevB, stage, nextB));
   render();

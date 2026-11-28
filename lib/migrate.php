@@ -4,7 +4,7 @@ declare(strict_types=1);
    이미 설치한 사이트도 새 기능에 필요한 표·칸이 저절로 추가돼요. 기존 데이터는 건드리지 않아요.
    새 버전에서 표 구조가 바뀌면 SCHEMA_VERSION 을 올리고 아래 sf_migrations() 에 단계를 덧붙여요. */
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 function sf_col_exists(PDO $db, string $table, string $col): bool {
     $st = $db->prepare('SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
@@ -255,6 +255,18 @@ function sf_migrate(PDO $db): array {
   CONSTRAINT fk_pp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         $done[] = 'planner_photos';
+    }
+    // v10: 플래너 북 표지 고르기
+    if (!sf_table_exists($db, 'planner_covers')) {
+        $db->exec("CREATE TABLE IF NOT EXISTS planner_covers (
+  user_id INT UNSIGNED NOT NULL,
+  ym      CHAR(7)      NOT NULL,
+  style   VARCHAR(20)  NOT NULL,
+  motto   VARCHAR(40)  NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, ym),
+  CONSTRAINT fk_pc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $done[] = 'planner_covers';
     }
     return $done;
 }

@@ -356,3 +356,13 @@ CREATE TABLE IF NOT EXISTS planner_photos (
   KEY idx_user_day (user_id, day),
   CONSTRAINT fk_pp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 플래너 북 표지 (v10)
+CREATE TABLE IF NOT EXISTS planner_covers (
+  user_id INT UNSIGNED NOT NULL,
+  ym      CHAR(7)      NOT NULL,
+  style   VARCHAR(20)  NOT NULL,
+  motto   VARCHAR(40)  NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, ym),
+  CONSTRAINT fk_pc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
