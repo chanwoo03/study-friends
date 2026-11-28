@@ -1,15 +1,20 @@
 /* 포도알 판: 목표를 이룰 때마다 한 알씩 칠하고, 다 채우면 배지를 받아요 */
 import { state, api, h, icon, avatar, toast, errToast, modal, confirmBtn, setTitle, pageHead, loadFriends, md, ago } from '../core.js';
 
-/* 판 그림(1086×1448)에서 잰 포도알 자리: [가로 %, 세로 %, 반지름(가로 %)] — 위에서부터 칠해요 */
-const W = 1086, H = 1448;
-const P = (list, r) => list.map(([x, y]) => [x / W * 100, y / H * 100, r / W * 100]);
+/* 판 그림에서 잰 포도알 자리: [가로 %, 세로 %, 반지름(가로 %)] — 위에서부터 칠해요
+   4번(동글 포도)이 지금 판이고, 1~3번은 예전에 만든 판이 그대로 보이도록 남겨 둬요 */
+const SIZE = { 1: [1086, 1448], 2: [1086, 1448], 3: [1086, 1448], 4: [1199, 1312] };
+const P = (s, list, r) => list.map(([x, y]) => [x / SIZE[s][0] * 100, y / SIZE[s][1] * 100, r / SIZE[s][0] * 100]);
 const LAYOUT = {
-  1: P([[309, 508], [475, 508], [629, 508], [796, 508], [385, 665], [553, 665], [721, 665], [332, 817], [498, 817], [665, 817], [408, 971], [578, 971], [746, 971], [471, 1125], [647, 1125], [544, 1275]], 81),
-  2: P([[364, 529], [543, 529], [722, 529], [274, 684], [453, 684], [632, 684], [811, 684], [363, 840], [544, 840], [722, 840], [452, 996], [631, 996], [542, 1150]], 86),
-  3: P([[383, 546], [547, 546], [711, 546], [296, 696], [463, 696], [629, 696], [793, 696], [379, 850], [547, 850], [713, 850], [460, 997], [630, 997], [409, 1151], [569, 1151], [491, 1290]], 80),
+  // 4번은 알이 살짝 가로로 긴 동그라미라 [가로, 세로, 너비, 높이](px)로 재서 타원으로 칠해요
+  4: [[292, 472, 178, 171], [494, 472, 177, 171], [694, 469, 179, 174], [896, 470, 177, 169], [298, 668, 176, 165], [497, 666, 170, 160], [694, 666, 171, 162], [892, 666, 173, 165],
+      [399, 839, 176, 158], [598, 837, 171, 156], [796, 838, 172, 157], [494, 1000, 179, 159], [696, 1001, 178, 162], [590, 1164, 186, 169]]
+    .map(([x, y, w, hh]) => [x / 1199 * 100, y / 1312 * 100, w / 2 / 1199 * 100, (hh + 8) / 1312 * 100, (w + 8) / 1199 * 100]),
+  1: P(1, [[309, 508], [475, 508], [629, 508], [796, 508], [385, 665], [553, 665], [721, 665], [332, 817], [498, 817], [665, 817], [408, 971], [578, 971], [746, 971], [471, 1125], [647, 1125], [544, 1275]], 81),
+  2: P(2, [[364, 529], [543, 529], [722, 529], [274, 684], [453, 684], [632, 684], [811, 684], [363, 840], [544, 840], [722, 840], [452, 996], [631, 996], [542, 1150]], 86),
+  3: P(3, [[383, 546], [547, 546], [711, 546], [296, 696], [463, 696], [629, 696], [793, 696], [379, 850], [547, 850], [713, 850], [460, 997], [630, 997], [409, 1151], [569, 1151], [491, 1290]], 80),
 };
-const DESIGNS = [[1, '포도 덩굴', 16], [2, '리본 액자', 13], [3, '보라 정원', 15]];
+const DESIGNS = [[4, '동글 포도', 14]];
 const TARGETS = [30, 60, 90, 120, 180, 240, 300];
 const fmtMin = (m) => { const hh = Math.floor(m / 60), mm = m % 60; return hh ? (mm ? `${hh}시간 ${mm}분` : `${hh}시간`) : `${mm}분`; };
 const modeText = (b) => (b.mode === 'study' ? `하루 ${fmtMin(b.targetMin)} 공부하면 저절로 칠해져요` : '목표를 이룬 날 직접 칠해요');
@@ -17,13 +22,13 @@ const modeText = (b) => (b.mode === 'study' ? `하루 ${fmtMin(b.targetMin)} 공
 /* 포도알 판 그림 + 칠한 알 */
 function boardEl(b, { anim = -1, small = false } = {}) {
   const people = new Map(b.people.map((u) => [u.id, u]));
-  const spots = LAYOUT[b.style] || LAYOUT[1];
+  const st = LAYOUT[b.style] ? b.style : 4, spots = LAYOUT[st];
   const marks = b.marks || [];
-  const el = h('div', { class: 'gp-board' + (small ? ' sm' : '') + (b.completedAt ? ' done' : '') },
-    h('img', { class: 'gp-img', src: `assets/grapes/board${b.style}.webp`, alt: `${b.title} 포도알 판, ${b.total}알 중 ${b.count}알`, draggable: 'false', loading: small ? 'lazy' : 'eager' }));
-  spots.slice(0, b.count).forEach(([x, y, r], i) => {
+  const el = h('div', { class: `gp-board s${st}` + (small ? ' sm' : '') + (b.completedAt ? ' done' : ''), style: { aspectRatio: `${SIZE[st][0]} / ${SIZE[st][1]}` } },
+    h('img', { class: 'gp-img', src: `assets/grapes/board${st}.webp`, alt: `${b.title} 포도알 판, ${b.total}알 중 ${b.count}알`, draggable: 'false', loading: small ? 'lazy' : 'eager' }));
+  spots.slice(0, b.count).forEach(([x, y, r, eh, ew], i) => {
     const m = marks[i], u = m && people.get(m.user);
-    el.append(h('span', { class: 'gp-fill' + (i === anim ? ' pop' : ''), style: { left: `${x}%`, top: `${y}%`, width: `${r * 2 * 0.9}%` },
+    el.append(h('span', { class: 'gp-fill' + (i === anim ? ' pop' : ''), style: ew ? { left: `${x}%`, top: `${y}%`, width: `${ew}%`, height: `${eh}%`, aspectRatio: 'auto' } : { left: `${x}%`, top: `${y}%`, width: `${r * 2 * 0.9}%` },
       title: m ? `${u ? u.name : '친구'} · ${md(m.day)}${m.note ? ' · ' + m.note : ''}` : '' },
       !small && u && b.people.length > 1 ? h('b', null, Array.from(u.name)[0]) : null));
   });
@@ -59,7 +64,7 @@ async function listPage(view) {
   const doing = r.boards.filter((b) => !b.completedAt), done = r.boards.filter((b) => b.completedAt);
   if (!r.boards.length) {
     view.append(h('section', { class: 'card gp-empty' },
-      boardEl({ style: 1, count: 5, total: 16, title: '예시', people: [], marks: [], completedAt: null }, { small: true }),
+      boardEl({ style: 4, count: 5, total: 14, title: '예시', people: [], marks: [], completedAt: null }, { small: true }),
       h('div', null, h('h3', null, '첫 포도알 판을 만들어 보세요'),
         h('p', { class: 'muted' }, '하루 2시간 공부하면 저절로 한 알, 아니면 목표를 이룬 날 직접 한 알. 친구와 같이 채우면 더 빨라요.'),
         h('button', { type: 'button', class: 'btn primary', onclick: () => editModal(null) }, icon('plus'), '새 포도알 판'))));
@@ -85,7 +90,7 @@ async function boardPage(view, id) {
   view.append(h('div', { class: 'gp-top' }, h('a', { class: 'btn ghost sm', href: '#/grapes' }, icon('back'), '포도알 판')),
     h('div', { class: 'gp-layout' }, stage, side));
   function paint(anim = -1, justDone = false) {
-    stage.replaceChildren(boardEl(b, { anim }), b.completedAt ? h('div', { class: 'gp-ribbon' + (justDone ? ' celebrate' : '') }, '다 채웠어요 🍇') : null);
+    stage.replaceChildren(boardEl(b, { anim }), b.completedAt ? h('div', { class: 'gp-ribbon' + (b.style === 4 || !LAYOUT[b.style] ? ' top' : '') + (justDone ? ' celebrate' : '') }, '다 채웠어요 🍇') : null);
     const people = new Map(b.people.map((u) => [u.id, u]));
     const per = new Map(b.people.map((u) => [u.id, 0]));
     for (const m of b.marks) per.set(m.user, (per.get(m.user) || 0) + 1);
@@ -127,7 +132,7 @@ async function boardPage(view, id) {
 /* 만들기·고치기 */
 async function editModal(b, onSaved) {
   const friends = await loadFriends(true).catch(() => []);   // 방금 맺은 친구도 보이게 새로 받아요
-  let style = b ? b.style : 1, mode = b ? b.mode : 'study', target = b ? b.targetMin : 120;
+  let style = b ? b.style : DESIGNS[0][0], mode = b ? b.mode : 'study', target = b ? b.targetMin : 120;
   const chosen = new Set(b ? b.people.map((u) => u.id).filter((x) => x !== state.me.id) : []);
   const title = h('input', { class: 'input', maxlength: '40', value: b ? b.title : '', placeholder: '예: 기말고사 같이 공부', 'aria-label': '판 이름' });
   const designs = h('div', { class: 'gp-designs' });
@@ -151,7 +156,7 @@ async function editModal(b, onSaved) {
       toast(b ? '판을 고쳤어요' : '포도알 판을 만들었어요');
     } catch (er) { errToast(er); }
   } }, h('h2', null, b ? '포도알 판 고치기' : '새 포도알 판'), h('label', { class: 'field' }, '판 이름', title),
-    h('div', { class: 'field' }, '판 그림', designs), h('div', { class: 'field' }, '칠하는 법', modes), targetRow,
+    DESIGNS.length > 1 ? h('div', { class: 'field' }, '판 그림', designs) : null, h('div', { class: 'field' }, '칠하는 법', modes), targetRow,
     h('div', { class: 'field' }, '같이 채울 친구 (선택)', who),
     h('div', { class: 'row end' }, h('button', { type: 'submit', class: 'btn primary' }, b ? '저장' : '만들기'))), { wide: true });
 }

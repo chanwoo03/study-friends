@@ -5,7 +5,8 @@ declare(strict_types=1);
    - 한 사람은 하루에 한 알 (같이 하는 판이라 공평하게)
    - 판은 만든 사람과 참여한 친구들만 볼 수 있어요 */
 
-const GRAPE_TOTAL = [1 => 16, 2 => 13, 3 => 15];   // 판 그림마다 포도알 수
+const GRAPE_TOTAL = [1 => 16, 2 => 13, 3 => 15, 4 => 14];   // 판 그림마다 포도알 수 (4번 동글 포도가 지금 판, 1~3번은 예전 판)
+const GRAPE_STYLE = 4;
 
 function grape_people(array $b): array {
     return array_values(array_unique(array_merge([(int)$b['owner_id']], array_map('intval', array_column(rows('SELECT user_id FROM grape_members WHERE board_id = ?', [$b['id']]), 'user_id')))));
@@ -15,7 +16,7 @@ function grape_load(int $id, int $me): array {
     if (!$b || !in_array($me, grape_people($b), true)) fail(404, '포도알 판을 찾을 수 없어요');
     return $b;
 }
-function grape_total(array $b): int { return GRAPE_TOTAL[(int)$b['style']] ?? 16; }
+function grape_total(array $b): int { return GRAPE_TOTAL[(int)$b['style']] ?? GRAPE_TOTAL[GRAPE_STYLE]; }
 function grape_count(int $id): int { return (int)val('SELECT COUNT(*) FROM grape_marks WHERE board_id = ?', [$id]); }
 
 function grape_out(array $b, int $me, bool $detail = false): array {
@@ -81,7 +82,8 @@ route('grape.get', 'GET', function (int $me) {
 route('grape.save', 'POST', function (int $me) {
     $id = int_arg('id', false);
     $title = str_arg('title', 40, true, '판 이름');
-    $style = max(1, min(3, int_arg('style', false) ?: 1));
+    $style = int_arg('style', false) ?: GRAPE_STYLE;
+    if (!isset(GRAPE_TOTAL[$style])) $style = GRAPE_STYLE;
     $mode = arg('mode', 'study') === 'check' ? 'check' : 'study';
     $target = max(10, min(720, int_arg('targetMin', false) ?: 120));
     $want = arg('members', []);
@@ -90,7 +92,7 @@ route('grape.save', 'POST', function (int $me) {
     if ($id) {
         $b = grape_load($id, $me);
         if ((int)$b['owner_id'] !== $me) fail(403, '만든 사람만 고칠 수 있어요');
-        if ((int)$b['style'] !== $style && grape_count($id) > (GRAPE_TOTAL[$style] ?? 16)) fail(400, '이미 칠한 포도알이 새 판보다 많아요');
+        if ((int)$b['style'] !== $style && grape_count($id) > GRAPE_TOTAL[$style]) fail(400, '이미 칠한 포도알이 새 판보다 많아요');
         q('UPDATE grape_boards SET title = ?, style = ?, mode = ?, target_min = ? WHERE id = ?', [$title, $style, $mode, $target, $id]);
         q('DELETE FROM grape_members WHERE board_id = ?', [$id]);
     } else {
