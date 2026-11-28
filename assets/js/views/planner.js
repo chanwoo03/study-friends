@@ -58,6 +58,19 @@ const MARKS = ['', '○', '△', '×'];
 const MARK_LABEL = ['아직', '다 했어요', '조금 했어요', '못 했어요'];
 
 function pageShell(side) { return h('section', { class: `pd-page pd-${side}` }, h('div', { class: 'pd-in' })); }
+/* 속지 분위기 장식 (누를 수 없고, 꾸미기와 따로예요) */
+const ORN = {
+  cute: [[['hoodie/study', 'br']], [['hoodie/cheer', 'tr']]],
+  classic: [[['sprig', 'br']], []],
+  feminine: [[['bow', 'tc'], ['tulips', 'bl']], [['bow', 'tc']]],
+};
+function addOrnaments(pages, theme) {
+  (ORN[theme] || []).forEach((list, i) => {
+    if (!pages[i]) return;
+    pages[i].append(h('div', { class: 'pd-orn', 'aria-hidden': 'true' }, list.map(([src, pos]) =>
+      h('img', { class: `orn orn-${pos} orn-${src.replace('/', '-')}`, src: src.includes('/') ? `assets/stickers/${src}.webp` : `assets/ornaments/${src}.png`, alt: '', draggable: 'false' }))));
+  });
+}
 function lbl(text, ...extra) { return h('div', { class: 'pd-lbl' }, h('span', { class: 'pd-hl' }, text), ...extra); }
 function ttGrid(slotsOf, subs) {
   const grid = h('div', { class: 'pd-tt' });
@@ -256,7 +269,9 @@ async function dayPage(view, date, u) {
   function dirtyBlocks() { paintGoal(); clearTimeout(blocksT); blocksT = setTimeout(() => api.post('planner.blocks', { date, blocks: manual }).catch(errToast), 700); }
   R.append(h('div', { class: 'pd-sec' }, lbl('타임테이블', ttTotal), legend, tt.grid, hint), h('div', { class: 'pd-sec' }, lbl('과목별 시간'), subsBox));
 
-  const spread = h('div', { class: 'pd-spread' + (ro ? ' ro' : '') }, left, right);
+  const theme = themeOf(d.cover ? d.cover.style : '');
+  const spread = h('div', { class: `pd-spread theme-${theme}` + (ro ? ' ro' : '') }, left, right);
+  addOrnaments([left, right], theme);
   view.append(spread);
   paintHead(); paintGoal(); paintTodos(); paintStars(); tt.paintAll(); paintLegend(); paintTimer();
   const editor = ro ? null : decoEditor({ date, pages: [left, right], decos: d.decos, photos, onChange: () => {} });
@@ -332,6 +347,7 @@ function staticSpread(x, subs, opts) {
   tt.paintAll();
   right.firstChild.append(h('div', { class: 'pd-sec' }, lbl('타임테이블', h('span', { class: 'pd-cnt' }, fmtMin(x.minutes))), tt.grid),
     h('div', { class: 'pd-sec' }, lbl('과목별 시간'), subTotals(slots, subs)));
+  addOrnaments([left, right], opts.theme);
   paintDecos([left, right], x.decos || [], opts);
   return [left, right];
 }
@@ -390,7 +406,8 @@ async function shelfPage(view, u) {
   view.append(h('div', { class: 'sh' }, rows.map((row) => h('div', { class: 'sh-row' },
     h('div', { class: 'sh-books' }, row.map((m, i) => {
       const [y, mo] = m.ym.split('-').map(Number);
-      return h('a', { class: `sh-book cv-${m.cover.style}` + (m.current ? ' cur' : ''), href: `#/planner/book/${m.ym}${uq(u)}`, style: { '--hgt': `${88 + ((mo * 7 + y) % 4) * 4}%`, '--tilt': i === 0 && row.length > 2 ? '4deg' : '0deg' }, 'aria-label': `${y}년 ${mo}월 플래너 북${m.current ? ', 작성 중' : ''}` },
+      const art = ART[m.cover.style];
+      return h('a', { class: `sh-book cv-${m.cover.style}` + (art ? ` sh-art art-${art.theme}` : '') + (m.current ? ' cur' : ''), href: `#/planner/book/${m.ym}${uq(u)}`, style: { '--hgt': `${88 + ((mo * 7 + y) % 4) * 4}%`, '--tilt': i === 0 && row.length > 2 ? '4deg' : '0deg', ...(art ? { '--cv-bg': art.bg, '--cv-art': `url("${new URL(`assets/covers/${m.cover.style}.jpg`, location.href).href}")` } : {}) }, 'aria-label': `${y}년 ${mo}월 플래너 북${m.current ? ', 작성 중' : ''}` },
         h('span', { class: 'cv-pat', 'aria-hidden': 'true' }),
         h('span', { class: 'sh-m' }, mo, h('small', null, '월')), h('span', { class: 'sh-y' }, y),
         h('span', { class: 'sh-t' }, m.studyMinutes ? shortMin(m.studyMinutes) : ''),
@@ -404,7 +421,27 @@ const COVERS = [
   ['lavender', '라벤더 체크'], ['strawberry', '딸기우유'], ['mint', '민트 물결'], ['lemon', '레몬 무지개'],
   ['night', '밤하늘 모눈'], ['oat', '오트밀 줄무늬'], ['matcha', '말차 데이지'], ['mono', '모노 핑크'],
 ];
+/* 그림 표지 8종: 고르면 그 달 속지도 같은 분위기로 바뀌어요 (theme) */
+const ART = {
+  cute: { name: '귀여운 친구들', bg: '#c7e1fd', fit: 'cover', theme: 'cute' },
+  'classic-ivory': { name: '클래식 아이보리', bg: '#ece4d6', fit: 'cover', theme: 'classic' },
+  'classic-green': { name: '클래식 올리브', bg: '#4b5a3b', fit: 'cover', theme: 'classic' },
+  'classic-wine': { name: '클래식 와인', bg: '#5a2426', fit: 'cover', theme: 'classic' },
+  'classic-plaid': { name: '클래식 체크', bg: '#6c5646', fit: 'cover', theme: 'classic' },
+  modern: { name: '모던 네이비', bg: '#2f3a52', fit: 'contain', theme: 'modern' },
+  'fem-ribbon': { name: '핑크 리본', bg: '#f6e3e3', fit: 'contain', theme: 'feminine' },
+  'fem-tulip': { name: '핑크 튤립', bg: '#f4e2dc', fit: 'contain', theme: 'feminine' },
+};
+const themeOf = (style) => (ART[style] ? ART[style].theme : 'grid');
+const coverName = (style) => (ART[style] ? ART[style].name : (COVERS.find((c) => c[0] === style) || ['', ''])[1]);
 function coverEl(Y, M, who, cover, sub) {
+  const art = ART[cover.style];
+  if (art) {
+    return h('div', { class: `bk-page cv cv-art art-${art.theme}`, style: { '--cv-bg': art.bg } },
+      h('img', { class: 'cv-img', src: `assets/covers/${cover.style}.jpg`, alt: '', draggable: 'false', style: { 'object-fit': art.fit } }),
+      h('div', { class: 'cv-badge' }, h('b', null, M, h('small', null, '월')), h('span', null, who)),
+      cover.motto || sub ? h('div', { class: 'cv-tag' }, cover.motto ? h('span', { class: 'cv-motto' }, cover.motto) : null, sub ? h('small', null, sub) : null) : null);
+  }
   return h('div', { class: `bk-page cv cv-${cover.style}` },
     h('span', { class: 'cv-pat', 'aria-hidden': 'true' }),
     h('div', { class: 'cv-top' }, h('span', null, Y), h('span', null, '공부 기록')),
@@ -414,10 +451,17 @@ function coverEl(Y, M, who, cover, sub) {
 function coverModal(ym, cur, who, onSave) {
   const [Y, M] = ym.split('-').map(Number);
   let style = cur.style;
-  const grid = h('div', { class: 'cv-grid' });
-  const paint = () => grid.replaceChildren(...COVERS.map(([k, label]) => h('button', { type: 'button', class: 'cv-opt' + (k === style ? ' on' : ''), 'aria-pressed': String(k === style), onclick: () => { style = k; paint(); } },
-    coverEl(Y, M, who, { style: k, motto: '' }), h('span', null, label))));
+  const artGrid = h('div', { class: 'cv-grid' }), flatGrid = h('div', { class: 'cv-grid' });
+  const opt = (k, label) => h('button', { type: 'button', class: 'cv-opt' + (k === style ? ' on' : ''), 'aria-pressed': String(k === style), onclick: () => { style = k; paint(); } },
+    coverEl(Y, M, who, { style: k, motto: '' }), h('span', null, label));
+  const paint = () => {
+    artGrid.replaceChildren(...Object.entries(ART).map(([k, a]) => opt(k, a.name)));
+    flatGrid.replaceChildren(...COVERS.map(([k, label]) => opt(k, label)));
+  };
   paint();
+  const grid = h('div', { class: 'cv-groups' },
+    h('h3', { class: 'cv-gh' }, '그림 다이어리', h('small', null, '속지도 같은 분위기로 바뀌어요')), artGrid,
+    h('h3', { class: 'cv-gh' }, '심플 표지', h('small', null, '속지는 모눈 종이')), flatGrid);
   const motto = h('input', { class: 'input', maxlength: '40', value: cur.motto || '', placeholder: '예: 꾸준함이 이긴다', 'aria-label': '좌우명' });
   const m = modal(h('form', { class: 'form', onsubmit: async (e) => {
     e.preventDefault();
@@ -443,7 +487,7 @@ async function bookPage(view, ym, u) {
   const allSlots = {};
   let k = 0;
   for (const x of days) for (const sid of Object.values(x.slots || {})) allSlots[k++] = sid;
-  const opts = { photos: r.photos || {}, u };
+  const opts = { photos: r.photos || {}, u, get theme() { return themeOf(cover.style); } };
 
   /* 쪽: 표지 / (달력 · 한 달 정리) / (그날 왼쪽 · 오른쪽)… / 뒤표지 */
   const calendarPage = () => {
@@ -470,7 +514,8 @@ async function bookPage(view, ym, u) {
     h('p', { class: 'bk-note pd-hand' }, filled.length ? '이번 달도 수고했어요. 다음 장부터 하루하루가 이어져요' : '아직 기록이 없어요. 하루 플래너를 쓰면 여기부터 한 장씩 쌓여요')));
   const backCover = () => h('div', { class: `bk-page cv cv-back cv-${cover.style}` }, h('span', { class: 'cv-pat', 'aria-hidden': 'true' }), h('span', { class: 'cv-back-t' }, '공부 친구'));
   const pages = [() => coverEl(Y, M, who, cover, `${fmtMin(total)} · ${filled.length}일의 기록`), calendarPage, statsPage];
-  for (const x of filled) { let pair = null; const get = (i) => { if (!pair) pair = staticSpread(x, subs, { ...opts, ddays: r.ddays.filter((y) => y.day >= x.date) }); return pair[i]; }; pages.push(() => get(0), () => get(1)); }
+  const cache = new Map();
+  for (const x of filled) { const get = (i) => { if (!cache.has(x.date)) cache.set(x.date, staticSpread(x, subs, { ...opts, theme: opts.theme, ddays: r.ddays.filter((y) => y.day >= x.date) })); return cache.get(x.date)[i]; }; pages.push(() => get(0), () => get(1)); }
   pages.push(backCover);
   const pageEl = (i) => (i >= 0 && i < pages.length ? pages[i]() : h('div', { class: 'bk-blank' }));
 
@@ -484,7 +529,7 @@ async function bookPage(view, ym, u) {
   const spreadIdx = () => (wide() ? (at === 0 ? [-1, 0] : [at, at + 1]) : [at]);
   function render(dir = 0) {
     const idx = spreadIdx();
-    const book = h('div', { class: 'bk-book' + (wide() ? ' two' : ' one') + (dir > 0 ? ' turn-next' : dir < 0 ? ' turn-prev' : '') + (idx[0] === -1 ? ' closed' : '') }, ...idx.map(pageEl));
+    const book = h('div', { class: `bk-book theme-${themeOf(cover.style)}` + (wide() ? ' two' : ' one') + (dir > 0 ? ' turn-next' : dir < 0 ? ' turn-prev' : '') + (idx[0] === -1 ? ' closed' : '') }, ...idx.map(pageEl));
     stage.replaceChildren(book);
     const last = pages.length - 1;
     prevB.disabled = at === 0;
@@ -507,15 +552,17 @@ async function bookPage(view, ym, u) {
   window.addEventListener('resize', onResize);
 
   function printBook() {
-    const all = h('div', { class: 'bk-print' }, pages.map((f) => f()));
+    cache.clear();   // 인쇄용은 새로 그려요 (책에 보이는 쪽을 빼 가지 않게)
+    const all = h('div', { class: `bk-print theme-${themeOf(cover.style)}` }, pages.map((f) => f()));
+    cache.clear();
     document.body.append(all); document.body.classList.add('bk-printing');
-    const done = () => { all.remove(); document.body.classList.remove('bk-printing'); window.removeEventListener('afterprint', done); };
+    const done = () => { all.remove(); document.body.classList.remove('bk-printing'); window.removeEventListener('afterprint', done); render(); };
     window.addEventListener('afterprint', done);
     setTimeout(() => { window.print(); setTimeout(done, 1000); }, 300);
   }
   view.append(topBar('book', { date: `${ym}-01`, u, owner: r.owner, mine: r.mine }),
     h('div', { class: 'bk-bar' }, h('a', { class: 'btn ghost sm', href: `#/planner/books${uq(u)}` }, icon('back'), '책장'), h('b', null, `${Y}년 ${M}월`), counter, h('span', { class: 'grow' }),
-      r.mine ? h('button', { type: 'button', class: 'btn sm', onclick: () => coverModal(ym, cover, who, (c) => { cover = c; render(); }) }, icon('draw'), '표지 바꾸기') : null,
+      r.mine ? h('button', { type: 'button', class: 'btn sm', onclick: () => coverModal(ym, cover, who, (c) => { cover = c; cache.clear(); render(); }) }, icon('draw'), '다이어리 고르기') : null,
       h('button', { type: 'button', class: 'btn sm', onclick: printBook }, icon('download'), 'PDF로 저장')),
     h('div', { class: 'bk-wrap' }, prevB, stage, nextB));
   render();

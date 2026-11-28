@@ -155,6 +155,7 @@ route('planner.get', 'GET', function (int $me) {
         'subjects' => subjects_of($uid),
         'ddays' => ddays_of($uid, $date),
         'friendsSharing' => $friendsSharing,
+        'cover' => cover_of($uid, substr($date, 0, 7)),
     ];
 });
 
@@ -294,10 +295,12 @@ route('planner.photo', 'GET', function (int $me) {
 });
 
 /* 플래너 북 표지: 디자인 8종 중 하나 + 좌우명 (달마다) */
-const COVER_STYLES = ['lavender', 'strawberry', 'mint', 'lemon', 'night', 'oat', 'matcha', 'mono'];
+const COVER_STYLES = ['lavender', 'strawberry', 'mint', 'lemon', 'night', 'oat', 'matcha', 'mono',
+    'cute', 'classic-ivory', 'classic-green', 'classic-wine', 'classic-plaid', 'modern', 'fem-ribbon', 'fem-tulip'];   // 뒤 8종은 그림 표지 + 같은 분위기 속지
 function cover_of(int $uid, string $ym): array {
     $c = row('SELECT style, motto FROM planner_covers WHERE user_id = ? AND ym = ?', [$uid, $ym]);
-    return $c ? ['style' => $c['style'], 'motto' => $c['motto']] : ['style' => COVER_STYLES[((int)substr($ym, 5, 2) - 1) % count(COVER_STYLES)], 'motto' => ''];
+    // 고르지 않은 달은 그림 다이어리 8종을 차례로
+    return $c ? ['style' => $c['style'], 'motto' => $c['motto']] : ['style' => COVER_STYLES[8 + ((int)substr($ym, 5, 2) - 1) % 8], 'motto' => ''];
 }
 route('planner.cover_save', 'POST', function (int $me) {
     $ym = (string)arg('ym', '');

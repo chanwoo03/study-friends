@@ -64,5 +64,86 @@
     "file": "tomorrow.webp"
    }
   ]
+ },
+ {
+  "key": "hoodie",
+  "name": "후드 친구들",
+  "items": [
+   {
+    "key": "plan",
+    "t": "계획대로 착착!",
+    "file": "plan.webp"
+   },
+   {
+    "key": "study",
+    "t": "오늘도 열공!",
+    "file": "study.webp"
+   },
+   {
+    "key": "more",
+    "t": "조금만 더!",
+    "file": "more.webp"
+   },
+   {
+    "key": "cando",
+    "t": "할 수 있어!",
+    "file": "cando.webp"
+   },
+   {
+    "key": "review",
+    "t": "복습 완료!",
+    "file": "review.webp"
+   },
+   {
+    "key": "focus",
+    "t": "집중 모드 ON!",
+    "file": "focus.webp"
+   },
+   {
+    "key": "idea",
+    "t": "아이디어!",
+    "file": "idea.webp"
+   },
+   {
+    "key": "desk",
+    "t": "열공 중",
+    "file": "desk.webp"
+   },
+   {
+    "key": "cheer",
+    "t": "응원해!",
+    "file": "cheer.webp"
+   },
+   {
+    "key": "schedule",
+    "t": "일정 체크!",
+    "file": "schedule.webp"
+   },
+   {
+    "key": "note",
+    "t": "필기 중",
+    "file": "note.webp"
+   },
+   {
+    "key": "sleepy",
+    "t": "졸려…",
+    "file": "sleepy.webp"
+   },
+   {
+    "key": "love",
+    "t": "고마워",
+    "file": "love.webp"
+   },
+   {
+    "key": "trophy",
+    "t": "해냈다!",
+    "file": "trophy.webp"
+   },
+   {
+    "key": "progress",
+    "t": "진도 체크",
+    "file": "progress.webp"
+   }
+  ]
  }
 ]
